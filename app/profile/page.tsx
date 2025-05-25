@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
-import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaCalendarAlt, FaEnvelope, FaMapMarkerAlt, FaLink, FaPencilAlt } from 'react-icons/fa';
+import { useRouter } from 'next/navigation';
+import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaCalendarAlt, FaEnvelope, FaMapMarkerAlt, FaLink, FaPencilAlt, FaSignOutAlt } from 'react-icons/fa';
+import { useLoading } from '@/lib/contexts/LoadingContext';
 
 interface Post {
   id: string;
@@ -31,6 +33,8 @@ interface User {
 type TabType = 'posts' | 'reposts' | 'likes';
 
 export default function ProfilePage() {
+  const router = useRouter();
+  const { startLoading, stopLoading } = useLoading();
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,6 +79,7 @@ export default function ProfilePage() {
     if (!user) return;
 
     try {
+      startLoading(`Loading ${tab}`);
       let endpoint = '/api/posts';
       switch (tab) {
         case 'posts':
@@ -95,6 +100,8 @@ export default function ProfilePage() {
       }
     } catch (error) {
       console.error(`Error fetching ${tab}:`, error);
+    } finally {
+      stopLoading();
     }
   };
 
@@ -107,6 +114,7 @@ export default function ProfilePage() {
     if (!user) return;
 
     try {
+      startLoading('Updating like');
       const method = likedPosts.has(postId) ? 'DELETE' : 'POST';
       const response = await fetch(`/api/posts/${postId}/like`, {
         method,
@@ -130,6 +138,24 @@ export default function ProfilePage() {
       }
     } catch (error) {
       console.error('Error handling like:', error);
+    } finally {
+      stopLoading();
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      startLoading('Signing out');
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Error signing out:', error.message);
+        return;
+      }
+      router.push('/');
+    } catch (error) {
+      console.error('Error during logout:', error);
+    } finally {
+      stopLoading();
     }
   };
 
@@ -171,11 +197,20 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Edit Profile Button */}
-        <div className="flex justify-end py-4">
-          <button className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors flex items-center gap-2">
+        {/* Profile Actions */}
+        <div className="flex justify-end py-4 gap-3">
+          <button 
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors flex items-center gap-2"
+          >
             <FaPencilAlt className="w-4 h-4" />
             <span>Edit Profile</span>
+          </button>
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-full transition-colors flex items-center gap-2"
+          >
+            <FaSignOutAlt className="w-4 h-4" />
+            <span>Logout</span>
           </button>
         </div>
 

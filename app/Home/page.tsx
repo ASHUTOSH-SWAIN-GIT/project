@@ -6,6 +6,17 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes, FaRegBookmark, FaShareAlt } from 'react-icons/fa';
 import { uploadFile } from '@/lib/uploadFile';
+import { useLoading } from '@/lib/contexts/LoadingContext';
+
+interface Comment {
+  id: string;
+  content: string;
+  createdAt: string;
+  user: {
+    name: string;
+    avatarUrl: string;
+  };
+}
 
 interface Post {
   id: string;
@@ -78,6 +89,11 @@ export default function HomePage() {
   const [mediaToUpload, setMediaToUpload] = useState<File | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [openCommentBoxes, setOpenCommentBoxes] = useState<Set<string>>(new Set());
+  const [comments, setComments] = useState<{ [postId: string]: Comment[] }>({});
+  const [newComments, setNewComments] = useState<{ [postId: string]: string }>({});
+  const [loadingComments, setLoadingComments] = useState<Set<string>>(new Set());
+  const { startLoading, stopLoading } = useLoading();
 
   const fetchPosts = async () => {
     try {
@@ -105,53 +121,63 @@ export default function HomePage() {
     }
   };
 
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError || !session) {
-          console.error('No session found');
-          setLoading(false);
+  const fetchUserInfo = async () => {
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('No session found');
+        router.push('/');
+        return;
+      }
+
+      const response = await fetch('/api/current-user', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+        fetchPosts();
+        fetchUserLikedPosts();
+      } else {
+        // If unauthorized or any other error, redirect to login
+        if (response.status === 401) {
+          // Sign out from Supabase to clear any invalid session
+          await supabase.auth.signOut();
+          router.push('/');
           return;
         }
-
-        const response = await fetch('/api/current-user', {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        });
-        
-        if (response.ok) {
-          const userData = await response.json();
-          setUser(userData);
-          fetchPosts();
-          fetchUserLikedPosts(); // Fetch liked posts after user is set
-        } else {
-          console.error('Failed to fetch user data');
-        }
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-      } finally {
-        setLoading(false);
+        console.error('Failed to fetch user data');
       }
-    };
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      // On any error, redirect to login
+      router.push('/');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchUserInfo();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
         fetchUserInfo();
-      } else {
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
-        setLikedPosts(new Set()); // Clear liked posts when user logs out
+        setLikedPosts(new Set());
+        router.push('/');
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [router]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const file = event.target.files?.[0];
@@ -182,6 +208,7 @@ export default function HomePage() {
     if ((!newPost.trim() && !mediaToUpload) || !user) return;
     
     try {
+      startLoading('Creating post');
       setUploadingMedia(true);
       let mediaUrl = '';
       
@@ -203,7 +230,6 @@ export default function HomePage() {
 
       if (response.ok) {
         const post = await response.json();
-        // Ensure the post has the correct structure
         const newPost = {
           ...post,
           _count: post._count || { like: 0, comment: 0 }
@@ -218,6 +244,7 @@ export default function HomePage() {
       console.error('Error creating post:', error);
     } finally {
       setUploadingMedia(false);
+      stopLoading();
     }
   };
 
@@ -225,6 +252,7 @@ export default function HomePage() {
     if (!user) return;
 
     try {
+      startLoading('Updating like');
       const method = likedPosts.has(postId) ? 'DELETE' : 'POST';
       const response = await fetch('/api/likes', {
         method,
@@ -238,7 +266,6 @@ export default function HomePage() {
       });
 
       if (response.ok) {
-        // Optimistically update UI
         setLikedPosts(prev => {
           const newSet = new Set(prev);
           if (method === 'POST') {
@@ -249,7 +276,6 @@ export default function HomePage() {
           return newSet;
         });
 
-        // Update post counts
         setPosts(prevPosts => 
           prevPosts.map(post => {
             if (post.id === postId) {
@@ -264,30 +290,94 @@ export default function HomePage() {
             return post;
           })
         );
-      } else {
-        // If the request failed, revert the optimistic update
-        const errorData = await response.json();
-        console.error('Like error:', errorData.error);
-        
-        // Revert optimistic updates
-        setLikedPosts(prev => {
-          const newSet = new Set(prev);
-          if (method === 'POST') {
-            newSet.delete(postId);
-          } else {
-            newSet.add(postId);
-          }
-          return newSet;
-        });
       }
     } catch (error) {
       console.error('Error handling like:', error);
+    } finally {
+      stopLoading();
     }
   };
 
-  const handleComment = (postId: string) => {
-    // TODO: Implement comment functionality
-    console.log('Comment clicked for post:', postId);
+  const fetchComments = async (postId: string) => {
+    try {
+      startLoading('Loading comments');
+      setLoadingComments(prev => new Set([...prev, postId]));
+      const response = await fetch(`/api/comments?postId=${postId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setComments(prev => ({ ...prev, [postId]: data }));
+      }
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+    } finally {
+      setLoadingComments(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(postId);
+        return newSet;
+      });
+      stopLoading();
+    }
+  };
+
+  const handleComment = async (postId: string) => {
+    setOpenCommentBoxes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(postId)) {
+        newSet.delete(postId);
+      } else {
+        newSet.add(postId);
+        // Fetch comments when opening the comment box
+        if (!comments[postId]) {
+          fetchComments(postId);
+        }
+      }
+      return newSet;
+    });
+  };
+
+  const submitComment = async (postId: string) => {
+    if (!user || !newComments[postId]?.trim()) return;
+
+    try {
+      startLoading('Posting comment');
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postId,
+          userId: user.id,
+          content: newComments[postId],
+        }),
+      });
+
+      if (response.ok) {
+        const newComment = await response.json();
+        setComments(prev => ({
+          ...prev,
+          [postId]: [...(prev[postId] || []), newComment],
+        }));
+        setNewComments(prev => ({ ...prev, [postId]: '' }));
+        setPosts(prev =>
+          prev.map(post =>
+            post.id === postId
+              ? {
+                  ...post,
+                  _count: {
+                    ...post._count,
+                    comment: post._count.comment + 1,
+                  },
+                }
+              : post
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error submitting comment:', error);
+    } finally {
+      stopLoading();
+    }
   };
 
   const handleRepost = (postId: string) => {
@@ -308,11 +398,9 @@ export default function HomePage() {
   }
 
   if (!user) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-white">Please sign in to continue</div>
-      </div>
-    );
+    // Instead of showing a message, redirect to login
+    router.push('/');
+    return null;
   }
 
   return (
@@ -526,7 +614,9 @@ export default function HomePage() {
                         onClick={() => handleComment(post.id)}
                         className="flex items-center gap-2 text-zinc-400 hover:text-blue-400 transition-all group"
                       >
-                        <FaRegComment className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <FaRegComment className={`w-5 h-5 group-hover:scale-110 transition-transform ${
+                          openCommentBoxes.has(post.id) ? 'text-blue-400' : ''
+                        }`} />
                         <span>{post._count?.comment || 0}</span>
                       </button>
 
@@ -548,6 +638,81 @@ export default function HomePage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Comments Section */}
+                  {openCommentBoxes.has(post.id) && (
+                    <div className="mt-4 pt-4 border-t border-white/5">
+                      {/* Comment Input */}
+                      <div className="flex gap-3 mb-4">
+                        <div className="relative w-8 h-8 rounded-full overflow-hidden">
+                          <Image
+                            src={user?.avatarUrl || "/default-avatar.png"}
+                            alt="Profile"
+                            width={32}
+                            height={32}
+                            className="object-cover"
+                          />
+                        </div>
+                        <div className="flex-1 flex gap-2">
+                          <input
+                            type="text"
+                            value={newComments[post.id] || ''}
+                            onChange={(e) => setNewComments(prev => ({ ...prev, [post.id]: e.target.value }))}
+                            placeholder="Write a comment..."
+                            className="flex-1 bg-zinc-800/50 rounded-xl px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-white/20"
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                submitComment(post.id);
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={() => submitComment(post.id)}
+                            className="px-4 py-2 bg-white text-black rounded-xl font-medium hover:bg-zinc-200 transition-colors"
+                          >
+                            Post
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Comments List */}
+                      <div className="space-y-4">
+                        {loadingComments.has(post.id) ? (
+                          <div className="text-center text-zinc-500">Loading comments...</div>
+                        ) : comments[post.id]?.length > 0 ? (
+                          comments[post.id].map((comment) => (
+                            <div key={comment.id} className="flex gap-3">
+                              <div className="relative w-8 h-8 rounded-full overflow-hidden">
+                                <Image
+                                  src={comment.user.avatarUrl || "/default-avatar.png"}
+                                  alt="Profile"
+                                  width={32}
+                                  height={32}
+                                  className="object-cover"
+                                />
+                              </div>
+                              <div className="flex-1 bg-zinc-800/30 rounded-xl p-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-medium text-white">{comment.user.name}</span>
+                                  <span className="text-xs text-zinc-500">
+                                    {new Date(comment.createdAt).toLocaleString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: 'numeric',
+                                      minute: 'numeric'
+                                    })}
+                                  </span>
+                                </div>
+                                <p className="text-zinc-300">{comment.content}</p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center text-zinc-500">No comments yet. Be the first to comment!</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
