@@ -9,32 +9,29 @@ datasource db {
 }
 
 model User {
-  id        String   @id // Matches Supabase Auth user ID (UUID)
-  email     String?  @unique
+  id        String   @id @default(cuid())
+  authId    String   @unique
+  email     String   @unique
   name      String?
   avatarUrl String?
-  bio       String?
   createdAt DateTime @default(now())
 
-
-    posts     Post[]
-  comments  Comment[]
-  likes     Like[]
+  posts    Post[]
+  comments Comment[]
+  likes    Like[]
 }
-
 
 model Post {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   content   String
-  mediaUrl  String?   // Supabase Storage file URL
-  createdAt DateTime  @default(now())
+  mediaUrl  String? // Supabase Storage file URL
+  createdAt DateTime @default(now())
 
-  comments  Comment[]
-  likes     Like[]
+  comments Comment[]
+  likes    Like[]
 }
-
 
 model Comment {
   id        String   @id @default(uuid())
@@ -45,7 +42,6 @@ model Comment {
   content   String
   createdAt DateTime @default(now())
 }
-
 
 model Like {
   id        String   @id @default(uuid())

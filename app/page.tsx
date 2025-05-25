@@ -1,6 +1,6 @@
 "use client";
 
-import { supabase } from "@/lib/utils/supabase";
+import { supabase } from "@/lib/supabase";
 import { FcGoogle } from "react-icons/fc";
 import { useEffect } from "react";
 
@@ -18,20 +18,26 @@ export default function Home() {
     }
   }
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        console.log('User:', session.user)
+    const getUser = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+  
+      if (session?.user) {
+        await fetch("/api/auth/sync-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            authId: session.user.id,
+            email: session.user.email,
+            name: session.user.user_metadata.name,
+            avatarUrl: session.user.user_metadata.avatar_url,
+          }),
+        })
       }
-    })
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        console.log('Logged in:', session.user)
-      }
-    })
-
-    return () => subscription.unsubscribe()
+    }
+  
+    getUser()
   }, [])
 
 
