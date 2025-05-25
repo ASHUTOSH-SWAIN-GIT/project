@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     const posts = await prisma.post.findMany({
       where: userId ? { authorId: userId } : undefined,
       orderBy: { createdAt: "desc" },
-      include: { author: true },
+      include: { author: true, },
     })
 
     return NextResponse.json(posts)
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { content, authorId } = await req.json()
+    const { content, authorId, mediaUrl } = await req.json()
 
     if (!content || !authorId) {
       return NextResponse.json({ error: "Missing content or authorId" }, { status: 400 })
@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
       data: {
         content,
         authorId,
+        mediaUrl,
       },
       include: {
         author: true,

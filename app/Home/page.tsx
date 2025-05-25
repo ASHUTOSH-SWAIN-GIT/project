@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { FaRegHeart, FaHeart, FaRegComment, FaRetweet } from 'react-icons/fa';
+import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes } from 'react-icons/fa';
+import { uploadFile } from '@/lib/uploadFile';
 
 interface Post {
   id: string;
   content: string;
   createdAt: string;
+  mediaUrl?: string;
   author: {
     name: string;
     avatarUrl: string;
@@ -27,6 +29,44 @@ interface User {
   avatarUrl: string;
 }
 
+interface ImageModalProps {
+  imageUrl: string;
+  onClose: () => void;
+}
+
+const ImageModal = ({ imageUrl, onClose }: ImageModalProps) => {
+  return (
+    <div 
+      className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="relative max-w-7xl w-full h-[80vh] flex items-center justify-center">
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+        >
+          <FaTimes className="w-6 h-6" />
+        </button>
+        <div className="relative w-full h-full" onClick={e => e.stopPropagation()}>
+          <Image
+            src={imageUrl}
+            alt="Enlarged post image"
+            fill
+            className="object-contain"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
+            priority
+            quality={90}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MAX_VIDEO_SIZE_MB = 100; // Maximum video size in MB
+const SUPPORTED_VIDEO_FORMATS = ['video/mp4', 'video/webm', 'video/quicktime'];
+const SUPPORTED_IMAGE_FORMATS = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
 export default function HomePage() {
   const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
@@ -34,6 +74,10 @@ export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [mediaToUpload, setMediaToUpload] = useState<File | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const fetchPosts = async () => {
     try {
@@ -93,10 +137,42 @@ export default function HomePage() {
     };
   }, []);
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadError(null);
+
+    // Validate file type
+    if (type === 'image' && !SUPPORTED_IMAGE_FORMATS.includes(file.type)) {
+      setUploadError('Please upload a supported image format (JPEG, PNG, GIF, WEBP)');
+      return;
+    }
+    if (type === 'video' && !SUPPORTED_VIDEO_FORMATS.includes(file.type)) {
+      setUploadError('Please upload a supported video format (MP4, WebM, QuickTime)');
+      return;
+    }
+
+    // Validate video file size
+    if (type === 'video' && file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+      setUploadError(`Video size must be less than ${MAX_VIDEO_SIZE_MB}MB`);
+      return;
+    }
+
+    setMediaToUpload(file);
+  };
+
   const handleCreatePost = async () => {
-    if (!newPost.trim() || !user) return;
+    if ((!newPost.trim() && !mediaToUpload) || !user) return;
     
     try {
+      setUploadingMedia(true);
+      let mediaUrl = '';
+      
+      if (mediaToUpload) {
+        mediaUrl = await uploadFile(mediaToUpload);
+      }
+
       const response = await fetch('/api/posts', {
         method: 'POST',
         headers: {
@@ -104,7 +180,8 @@ export default function HomePage() {
         },
         body: JSON.stringify({
           content: newPost,
-          authorId: user.id
+          authorId: user.id,
+          mediaUrl
         }),
       });
 
@@ -112,11 +189,14 @@ export default function HomePage() {
         const post = await response.json();
         setPosts([post, ...posts]);
         setNewPost('');
+        setMediaToUpload(null);
       } else {
         console.error('Failed to create post');
       }
     } catch (error) {
       console.error('Error creating post:', error);
+    } finally {
+      setUploadingMedia(false);
     }
   };
 
@@ -183,6 +263,13 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-black">
+      {selectedImage && (
+        <ImageModal 
+          imageUrl={selectedImage} 
+          onClose={() => setSelectedImage(null)} 
+        />
+      )}
+      
       <div className="max-w-6xl mx-auto py-8 px-4">
         <div className="grid grid-cols-12 gap-4">
           {/* Left Sidebar - User Profile */}
@@ -233,12 +320,78 @@ export default function HomePage() {
                 value={newPost}
                 onChange={(e) => setNewPost(e.target.value)}
               />
-              <div className="flex justify-end mt-2">
+              
+              {mediaToUpload && (
+                <div className="mt-2 p-2 bg-zinc-800 rounded-lg text-zinc-400">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="truncate">{mediaToUpload.name}</span>
+                    <button 
+                      onClick={() => {
+                        setMediaToUpload(null);
+                        setUploadError(null);
+                      }}
+                      className="text-red-500 hover:text-red-400 ml-2"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  {mediaToUpload.type.startsWith('video/') && (
+                    <div className="text-sm text-zinc-500">
+                      Size: {(mediaToUpload.size / (1024 * 1024)).toFixed(1)}MB
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {uploadError && (
+                <div className="mt-2 text-red-500 text-sm">
+                  {uploadError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between mt-2">
+                <div className="flex gap-2">
+                  <label 
+                    className="cursor-pointer p-2 text-zinc-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800 relative group"
+                    title="Upload image (JPEG, PNG, GIF, WEBP)"
+                  >
+                    <input
+                      type="file"
+                      accept={SUPPORTED_IMAGE_FORMATS.join(',')}
+                      className="hidden"
+                      onChange={(e) => handleFileUpload(e, 'image')}
+                    />
+                    <FaImage className="w-5 h-5" />
+                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-black rounded opacity-0 group-hover:opacity-100 whitespace-nowrap">
+                      Upload image
+                    </span>
+                  </label>
+                  <label 
+                    className="cursor-pointer p-2 text-zinc-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800 relative group"
+                    title={`Upload video (max ${MAX_VIDEO_SIZE_MB}MB)`}
+                  >
+                    <input
+                      type="file"
+                      accept={SUPPORTED_VIDEO_FORMATS.join(',')}
+                      className="hidden"
+                      onChange={(e) => handleFileUpload(e, 'video')}
+                    />
+                    <FaVideo className="w-5 h-5" />
+                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-black rounded opacity-0 group-hover:opacity-100 whitespace-nowrap">
+                      Upload video (max {MAX_VIDEO_SIZE_MB}MB)
+                    </span>
+                  </label>
+                </div>
                 <button
-                  className="px-4 py-2 bg-white text-black rounded-lg hover:bg-zinc-200 transition-colors font-semibold"
+                  className={`px-4 py-2 bg-white text-black rounded-lg font-semibold transition-colors ${
+                    uploadingMedia 
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:bg-zinc-200'
+                  }`}
                   onClick={handleCreatePost}
+                  disabled={uploadingMedia}
                 >
-                  Post
+                  {uploadingMedia ? 'Uploading...' : 'Post'}
                 </button>
               </div>
             </div>
@@ -265,6 +418,33 @@ export default function HomePage() {
                     </div>
                   </div>
                   <p className="text-zinc-100 mb-4">{post.content}</p>
+                  
+                  {post.mediaUrl && (
+                    <div className="mb-4 rounded-lg overflow-hidden bg-zinc-950">
+                      {post.mediaUrl.includes('.mp4') || post.mediaUrl.includes('.mov') || post.mediaUrl.includes('.webm') ? (
+                        <video 
+                          src={post.mediaUrl} 
+                          controls 
+                          preload="metadata"
+                          className="w-full max-h-[512px] object-contain"
+                          playsInline
+                        />
+                      ) : (
+                        <div 
+                          className="cursor-pointer transition-transform hover:opacity-90"
+                          onClick={() => post.mediaUrl && setSelectedImage(post.mediaUrl)}
+                        >
+                          <Image
+                            src={post.mediaUrl}
+                            alt="Post media"
+                            width={512}
+                            height={512}
+                            className="w-full max-h-[512px] object-contain"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   {/* Post Actions */}
                   <div className="flex items-center space-x-8 pt-2 border-t border-zinc-800">

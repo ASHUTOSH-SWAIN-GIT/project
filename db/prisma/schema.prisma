@@ -28,6 +28,7 @@ model Post {
   updatedAt DateTime @updatedAt
   author    User     @relation(fields: [authorId], references: [id])
   authorId  String
+  mediaUrl  String?   
 
   comment Comment[]
   like    Like[]
