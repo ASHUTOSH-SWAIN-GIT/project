@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
         _count: {
           select: {
             like: true,
-            comment: true
+            comments: true
           }
         }
       }
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
         _count: {
           select: {
             like: true,
-            comment: true
+            comments: true
           }
         }
       },

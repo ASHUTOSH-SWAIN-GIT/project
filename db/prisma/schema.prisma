@@ -18,7 +18,8 @@ model User {
 
   posts    Post[]
   comments Comment[]
-  likes    Like[]
+  like   Like[]
+  reposts  Repost[]
 }
 
 model Post {
@@ -30,12 +31,9 @@ model Post {
   authorId  String
   mediaUrl  String?   
 
-  repostedPost     Post?   @relation("Reposts", fields: [repostedPostId], references: [id])
-  repostedPostId   String?
-  reposts          Post[]  @relation("Reposts")
-
-  comment Comment[]
+  comments Comment[]
   like    Like[]
+  reposts  Repost[]
 
   @@index([authorId])
 }
@@ -59,4 +57,15 @@ model Like {
   createdAt DateTime @default(now())
 
   @@unique([postId, userId]) // 1 like per user per post
+}
+
+model Repost {
+  id        String   @id @default(uuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId]) // 1 repost per user per post
 }

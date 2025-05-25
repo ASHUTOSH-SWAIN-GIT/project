@@ -17,7 +17,8 @@ interface Post {
   };
   _count?: {
     like: number;
-    comment: number;
+    comments: number;
+    reposts: number;
   };
 }
 
@@ -40,6 +41,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('posts');
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+  const [commentedPosts, setCommentedPosts] = useState<Set<string>>(new Set());
+  const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -62,6 +65,7 @@ export default function ProfilePage() {
           const userData = await response.json();
           setUser(userData);
           fetchUserContent(activeTab);
+          fetchUserCommentedPosts();
         } else {
           console.error('Failed to fetch user data');
         }
@@ -108,6 +112,20 @@ export default function ProfilePage() {
       console.error(`Error fetching ${tab}:`, error);
     } finally {
       stopLoading();
+    }
+  };
+
+  const fetchUserCommentedPosts = async () => {
+    if (!user) return;
+    
+    try {
+      const response = await fetch(`/api/posts/comments?userId=${user.id}`);
+      if (response.ok) {
+        const commentedPosts = await response.json();
+        setCommentedPosts(new Set(commentedPosts.map((post: Post) => post.id)));
+      }
+    } catch (error) {
+      console.error('Error fetching commented posts:', error);
     }
   };
 
@@ -359,14 +377,20 @@ export default function ProfilePage() {
                     ) : (
                       <FaRegHeart className="w-5 h-5 group-hover:scale-110 transition-transform" />
                     )}
-                    <span>{post._count?.like || 0}</span>
+                    <span className={likedPosts.has(post.id) ? 'text-red-500' : ''}>
+                      {post._count?.like || 0}
+                    </span>
                   </button>
 
                   <button 
                     className="flex items-center gap-2 text-zinc-400 hover:text-blue-500 transition-colors group"
                   >
-                    <FaRegComment className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                    <span>{post._count?.comment || 0}</span>
+                    <FaRegComment className={`w-5 h-5 group-hover:scale-110 transition-transform ${
+                      commentedPosts.has(post.id) ? 'text-blue-500' : ''
+                    }`} />
+                    <span className={commentedPosts.has(post.id) ? 'text-blue-500' : ''}>
+                      {post._count?.comments || 0}
+                    </span>
                   </button>
 
                   <button 

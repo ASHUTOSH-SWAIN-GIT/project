@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes, FaRegBookmark, FaShareAlt } from 'react-icons/fa';
 import { uploadFile } from '@/lib/uploadFile';
 import { useLoading } from '@/lib/contexts/LoadingContext';
+import { Loader, InlineLoader } from '@/components/Loader';
 
 interface Comment {
   id: string;
@@ -29,7 +30,8 @@ interface Post {
   };
   _count: {
     like: number;
-    comment: number;
+    comments: number;
+    reposts: number;
   };
 }
 
@@ -93,6 +95,8 @@ export default function HomePage() {
   const [comments, setComments] = useState<{ [postId: string]: Comment[] }>({});
   const [newComments, setNewComments] = useState<{ [postId: string]: string }>({});
   const [loadingComments, setLoadingComments] = useState<Set<string>>(new Set());
+  const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
+  const [commentedPosts, setCommentedPosts] = useState<Set<string>>(new Set());
   const { startLoading, stopLoading } = useLoading();
 
   const fetchPosts = async () => {
@@ -121,6 +125,38 @@ export default function HomePage() {
     }
   };
 
+  const fetchUserRepostedPosts = async () => {
+    if (!user) return;
+    
+    try {
+      const response = await fetch(`/api/posts/reposts?userId=${user.id}`);
+      if (response.ok) {
+        const repostedPosts = await response.json();
+        setRepostedPosts(new Set(repostedPosts.map((post: Post) => post.id)));
+      }
+    } catch (error) {
+      console.error('Error fetching reposted posts:', error);
+    }
+  };
+
+  const fetchUserCommentedPosts = async () => {
+    if (!user) return;
+    
+    try {
+      console.log('Fetching commented posts for user:', user.id);
+      const response = await fetch(`/api/comments?userId=${user.id}`);
+      if (response.ok) {
+        const commentedPosts = await response.json();
+        console.log('Received commented posts:', commentedPosts);
+        setCommentedPosts(new Set(commentedPosts.map((post: Post) => post.id)));
+      } else {
+        console.error('Failed to fetch commented posts:', response.status);
+      }
+    } catch (error) {
+      console.error('Error fetching commented posts:', error);
+    }
+  };
+
   const fetchUserInfo = async () => {
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -142,10 +178,10 @@ export default function HomePage() {
         setUser(userData);
         fetchPosts();
         fetchUserLikedPosts();
+        fetchUserRepostedPosts();
+        fetchUserCommentedPosts();
       } else {
-        // If unauthorized or any other error, redirect to login
         if (response.status === 401) {
-          // Sign out from Supabase to clear any invalid session
           await supabase.auth.signOut();
           router.push('/');
           return;
@@ -154,7 +190,6 @@ export default function HomePage() {
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
-      // On any error, redirect to login
       router.push('/');
     } finally {
       setLoading(false);
@@ -167,9 +202,11 @@ export default function HomePage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
         fetchUserInfo();
+        fetchUserRepostedPosts();
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setLikedPosts(new Set());
+        setRepostedPosts(new Set());
         router.push('/');
       }
     });
@@ -232,7 +269,7 @@ export default function HomePage() {
         const post = await response.json();
         const newPost = {
           ...post,
-          _count: post._count || { like: 0, comment: 0 }
+          _count: post._count || { like: 0, comments: 0 }
         };
         setPosts([newPost, ...posts]);
         setNewPost('');
@@ -353,25 +390,36 @@ export default function HomePage() {
       });
 
       if (response.ok) {
-        const newComment = await response.json();
+        const { comment, post } = await response.json();
+        console.log('New comment added:', comment);
+        
+        // Update comments for this post
         setComments(prev => ({
           ...prev,
-          [postId]: [...(prev[postId] || []), newComment],
+          [postId]: [...(prev[postId] || []), comment],
         }));
+        
+        // Clear comment input
         setNewComments(prev => ({ ...prev, [postId]: '' }));
+        
+        // Mark post as commented
+        setCommentedPosts(prev => {
+          const newSet = new Set(prev);
+          newSet.add(postId);
+          console.log('Updated commented posts:', Array.from(newSet));
+          return newSet;
+        });
+        
+        // Update post with new counts
         setPosts(prev =>
-          prev.map(post =>
-            post.id === postId
-              ? {
-                  ...post,
-                  _count: {
-                    ...post._count,
-                    comment: post._count.comment + 1,
-                  },
-                }
-              : post
+          prev.map(p =>
+            p.id === postId ? { ...p, _count: post._count } : p
           )
         );
+      } else {
+        console.error('Failed to submit comment:', response.status);
+        const errorData = await response.json();
+        console.error('Error details:', errorData);
       }
     } catch (error) {
       console.error('Error submitting comment:', error);
@@ -380,21 +428,83 @@ export default function HomePage() {
     }
   };
 
-  const handleRepost = (postId: string) => {
-    // TODO: Implement repost functionality
-    console.log('Repost clicked for post:', postId);
+  const handleRepost = async (postId: string) => {
+    if (!user) return;
+
+    try {
+      startLoading('Updating repost');
+      const method = repostedPosts.has(postId) ? 'DELETE' : 'POST';
+      const response = await fetch('/api/repost', {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          userId: user.id,
+          postId 
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Update reposted posts state
+        setRepostedPosts(prev => {
+          const newSet = new Set(prev);
+          if (method === 'POST') {
+            newSet.add(postId);
+          } else {
+            newSet.delete(postId);
+          }
+          return newSet;
+        });
+
+        // Update post in the posts list with the new data
+        if (data.post) {
+          setPosts(prevPosts => 
+            prevPosts.map(post => 
+              post.id === postId ? { ...post, _count: data.post._count } : post
+            )
+          );
+        }
+      } else {
+        const errorData = await response.json();
+        console.error('Repost error:', errorData.error);
+      }
+    } catch (error) {
+      console.error('Error handling repost:', error);
+    } finally {
+      stopLoading();
+    }
   };
 
   const handleProfileClick = () => {
     router.push('/profile');
   };
 
-  if (loading) {
+  const renderCommentButton = (post: Post) => {
+    const hasCommented = commentedPosts.has(post.id);
+    console.log('Rendering comment button for post:', post.id, 'hasCommented:', hasCommented);
+    
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-white">Loading...</div>
-      </div>
+      <button 
+        onClick={() => handleComment(post.id)}
+        className="flex items-center gap-2 text-zinc-400 hover:text-blue-400 transition-all group"
+      >
+        <FaRegComment 
+          className={`w-5 h-5 group-hover:scale-110 transition-transform ${
+            hasCommented ? 'text-blue-400' : ''
+          }`} 
+        />
+        <span className={hasCommented ? 'text-blue-400' : ''}>
+          {post._count?.comments || 0}
+        </span>
+      </button>
     );
+  };
+
+  if (loading) {
+    return <Loader message="Loading your feed" />;
   }
 
   if (!user) {
@@ -607,25 +717,23 @@ export default function HomePage() {
                         ) : (
                           <FaRegHeart className="w-5 h-5 group-hover:scale-110 transition-transform" />
                         )}
-                        <span>{post._count?.like || 0}</span>
+                        <span className={likedPosts.has(post.id) ? 'text-red-400' : ''}>
+                          {post._count?.like || 0}
+                        </span>
                       </button>
 
-                      <button 
-                        onClick={() => handleComment(post.id)}
-                        className="flex items-center gap-2 text-zinc-400 hover:text-blue-400 transition-all group"
-                      >
-                        <FaRegComment className={`w-5 h-5 group-hover:scale-110 transition-transform ${
-                          openCommentBoxes.has(post.id) ? 'text-blue-400' : ''
-                        }`} />
-                        <span>{post._count?.comment || 0}</span>
-                      </button>
+                      {renderCommentButton(post)}
 
                       <button 
                         onClick={() => handleRepost(post.id)}
                         className="flex items-center gap-2 text-zinc-400 hover:text-green-400 transition-all group"
                       >
-                        <FaRetweet className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        <span>0</span>
+                        <FaRetweet className={`w-5 h-5 group-hover:scale-110 transition-transform ${
+                          repostedPosts.has(post.id) ? 'text-green-400' : ''
+                        }`} />
+                        <span className={repostedPosts.has(post.id) ? 'text-green-400' : ''}>
+                          {post._count?.reposts || 0}
+                        </span>
                       </button>
                     </div>
 
@@ -678,7 +786,7 @@ export default function HomePage() {
                       {/* Comments List */}
                       <div className="space-y-4">
                         {loadingComments.has(post.id) ? (
-                          <div className="text-center text-zinc-500">Loading comments...</div>
+                          <InlineLoader />
                         ) : comments[post.id]?.length > 0 ? (
                           comments[post.id].map((comment) => (
                             <div key={comment.id} className="flex gap-3">

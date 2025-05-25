@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing userId or postId" }, { status: 400 })
     }
 
-    const like = await prisma.like.create({
+    const repost = await prisma.repost.create({
       data: {
         userId,
         postId,
@@ -31,24 +31,23 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    return NextResponse.json({ like, post: updatedPost }, { status: 201 })
+    return NextResponse.json({ repost, post: updatedPost }, { status: 201 })
   } catch (err: any) {
-    // Handle unique constraint error (user already liked this post)
+    // Handle unique constraint error (user already reposted this post)
     if (err.code === "P2002") {
-      return NextResponse.json({ error: "Post already liked by this user" }, { status: 409 })
+      return NextResponse.json({ error: "Post already reposted by this user" }, { status: 409 })
     }
 
-    console.error("Error liking post:", err)
-    return NextResponse.json({ error: "Failed to like post" }, { status: 500 })
+    console.error("Error reposting post:", err)
+    return NextResponse.json({ error: "Failed to repost" }, { status: 500 })
   }
 }
 
-// DELETE /api/likes
 export async function DELETE(req: NextRequest) {
   const { userId, postId } = await req.json()
 
   try {
-    await prisma.like.delete({
+    await prisma.repost.delete({
       where: {
         postId_userId: {
           postId,
@@ -72,10 +71,9 @@ export async function DELETE(req: NextRequest) {
       }
     })
 
-    return NextResponse.json({ message: "Post unliked", post: updatedPost })
+    return NextResponse.json({ message: "Post unreposted", post: updatedPost })
   } catch (err) {
-    console.error("Error unliking post:", err)
-    return NextResponse.json({ error: "Failed to unlike post" }, { status: 500 })
+    console.error("Error unreposting post:", err)
+    return NextResponse.json({ error: "Failed to unrepost" }, { status: 500 })
   }
-}
-  
+} 
