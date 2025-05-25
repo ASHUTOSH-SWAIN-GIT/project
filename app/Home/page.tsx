@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes } from 'react-icons/fa';
+import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes, FaRegBookmark, FaShareAlt } from 'react-icons/fa';
 import { uploadFile } from '@/lib/uploadFile';
 
 interface Post {
@@ -16,7 +16,7 @@ interface Post {
     name: string;
     avatarUrl: string;
   };
-  _count?: {
+  _count: {
     like: number;
     comment: number;
   };
@@ -91,6 +91,20 @@ export default function HomePage() {
     }
   };
 
+  const fetchUserLikedPosts = async () => {
+    if (!user) return;
+    
+    try {
+      const response = await fetch(`/api/users/${user.id}/liked-posts`);
+      if (response.ok) {
+        const likedPosts = await response.json();
+        setLikedPosts(new Set(likedPosts.map((post: Post) => post.id)));
+      }
+    } catch (error) {
+      console.error('Error fetching liked posts:', error);
+    }
+  };
+
   useEffect(() => {
     const fetchUserInfo = async () => {
       try {
@@ -112,6 +126,7 @@ export default function HomePage() {
           const userData = await response.json();
           setUser(userData);
           fetchPosts();
+          fetchUserLikedPosts(); // Fetch liked posts after user is set
         } else {
           console.error('Failed to fetch user data');
         }
@@ -129,6 +144,7 @@ export default function HomePage() {
         fetchUserInfo();
       } else {
         setUser(null);
+        setLikedPosts(new Set()); // Clear liked posts when user logs out
       }
     });
 
@@ -187,7 +203,12 @@ export default function HomePage() {
 
       if (response.ok) {
         const post = await response.json();
-        setPosts([post, ...posts]);
+        // Ensure the post has the correct structure
+        const newPost = {
+          ...post,
+          _count: post._count || { like: 0, comment: 0 }
+        };
+        setPosts([newPost, ...posts]);
         setNewPost('');
         setMediaToUpload(null);
       } else {
@@ -205,15 +226,19 @@ export default function HomePage() {
 
     try {
       const method = likedPosts.has(postId) ? 'DELETE' : 'POST';
-      const response = await fetch(`/api/posts/${postId}/like`, {
+      const response = await fetch('/api/likes', {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({ 
+          userId: user.id,
+          postId 
+        }),
       });
 
       if (response.ok) {
+        // Optimistically update UI
         setLikedPosts(prev => {
           const newSet = new Set(prev);
           if (method === 'POST') {
@@ -223,8 +248,37 @@ export default function HomePage() {
           }
           return newSet;
         });
-        // Refresh posts to update counts
-        fetchPosts();
+
+        // Update post counts
+        setPosts(prevPosts => 
+          prevPosts.map(post => {
+            if (post.id === postId) {
+              return {
+                ...post,
+                _count: {
+                  ...post._count,
+                  like: method === 'POST' ? post._count.like + 1 : post._count.like - 1
+                }
+              };
+            }
+            return post;
+          })
+        );
+      } else {
+        // If the request failed, revert the optimistic update
+        const errorData = await response.json();
+        console.error('Like error:', errorData.error);
+        
+        // Revert optimistic updates
+        setLikedPosts(prev => {
+          const newSet = new Set(prev);
+          if (method === 'POST') {
+            newSet.delete(postId);
+          } else {
+            newSet.add(postId);
+          }
+          return newSet;
+        });
       }
     } catch (error) {
       console.error('Error handling like:', error);
@@ -262,26 +316,21 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-black">
-      {selectedImage && (
-        <ImageModal 
-          imageUrl={selectedImage} 
-          onClose={() => setSelectedImage(null)} 
-        />
-      )}
+    <div className="min-h-screen bg-gradient-to-b from-black to-zinc-900">
+      {selectedImage && <ImageModal imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />}
       
       <div className="max-w-6xl mx-auto py-8 px-4">
-        <div className="grid grid-cols-12 gap-4">
+        <div className="grid grid-cols-12 gap-6">
           {/* Left Sidebar - User Profile */}
           <div className="col-span-3">
-            <div className="bg-zinc-900 rounded-lg shadow p-4 border border-zinc-800">
+            <div className="bg-zinc-900/50 backdrop-blur-lg rounded-2xl shadow-xl p-6 border border-white/5 sticky top-8">
               <div className="flex flex-col items-center">
                 <div 
                   onClick={handleProfileClick}
-                  className="relative w-24 h-24 rounded-full overflow-hidden mb-4 border-2 border-white cursor-pointer hover:opacity-80 transition-opacity"
+                  className="relative w-24 h-24 rounded-full overflow-hidden mb-4 ring-4 ring-white/10 cursor-pointer transform hover:scale-105 transition-all duration-300 hover:ring-white/20"
                 >
                   <Image
-                    src={user.avatarUrl || "/default-avatar.png"}
+                    src={user?.avatarUrl || "/default-avatar.png"}
                     alt="Profile"
                     width={96}
                     height={96}
@@ -290,19 +339,20 @@ export default function HomePage() {
                 </div>
                 <h2 
                   onClick={handleProfileClick}
-                  className="text-xl font-semibold text-white cursor-pointer hover:underline"
+                  className="text-xl font-semibold text-white cursor-pointer hover:text-white/90 transition-colors"
                 >
-                  {user.name || 'Anonymous'}
+                  {user?.name || 'Anonymous'}
                 </h2>
-                <p className="text-zinc-400 text-sm">{user.email}</p>
-                <div className="w-full mt-4 pt-4 border-t border-zinc-800">
-                  <div className="flex justify-between text-sm text-zinc-400">
-                    <span>Profile views</span>
-                    <span className="font-semibold text-white">152</span>
+                <p className="text-zinc-400 text-sm mt-1">{user?.email}</p>
+                
+                <div className="w-full mt-6 pt-6 border-t border-white/5">
+                  <div className="flex justify-between items-center text-sm mb-3 group cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors">
+                    <span className="text-zinc-400 group-hover:text-white">Profile views</span>
+                    <span className="font-semibold text-white">{152}</span>
                   </div>
-                  <div className="flex justify-between text-sm text-zinc-400 mt-2">
-                    <span>Post impressions</span>
-                    <span className="font-semibold text-white">1,284</span>
+                  <div className="flex justify-between items-center text-sm group cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors">
+                    <span className="text-zinc-400 group-hover:text-white">Post impressions</span>
+                    <span className="font-semibold text-white">{1284}</span>
                   </div>
                 </div>
               </div>
@@ -310,11 +360,11 @@ export default function HomePage() {
           </div>
 
           {/* Main Content - Post Creation and Feed */}
-          <div className="col-span-9">
+          <div className="col-span-9 space-y-6">
             {/* Create Post */}
-            <div className="bg-zinc-900 rounded-lg shadow p-4 mb-4 border border-zinc-800">
+            <div className="bg-zinc-900/50 backdrop-blur-lg rounded-2xl shadow-xl p-6 border border-white/5">
               <textarea
-                className="w-full p-4 bg-zinc-800 text-white border-none rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-white placeholder-zinc-500"
+                className="w-full p-4 bg-zinc-800/50 text-white border-none rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-white/20 placeholder-zinc-500 transition-all"
                 placeholder="What's on your mind?"
                 rows={3}
                 value={newPost}
@@ -322,7 +372,7 @@ export default function HomePage() {
               />
               
               {mediaToUpload && (
-                <div className="mt-2 p-2 bg-zinc-800 rounded-lg text-zinc-400">
+                <div className="mt-3 p-3 bg-zinc-800/50 rounded-xl text-zinc-400 backdrop-blur-sm">
                   <div className="flex items-center justify-between mb-2">
                     <span className="truncate">{mediaToUpload.name}</span>
                     <button 
@@ -330,9 +380,9 @@ export default function HomePage() {
                         setMediaToUpload(null);
                         setUploadError(null);
                       }}
-                      className="text-red-500 hover:text-red-400 ml-2"
+                      className="text-red-400 hover:text-red-300 ml-2 transition-colors"
                     >
-                      Remove
+                      <FaTimes className="w-4 h-4" />
                     </button>
                   </div>
                   {mediaToUpload.type.startsWith('video/') && (
@@ -344,15 +394,15 @@ export default function HomePage() {
               )}
 
               {uploadError && (
-                <div className="mt-2 text-red-500 text-sm">
+                <div className="mt-3 text-red-400 text-sm bg-red-500/10 p-3 rounded-xl">
                   {uploadError}
                 </div>
               )}
 
-              <div className="flex items-center justify-between mt-2">
-                <div className="flex gap-2">
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex gap-3">
                   <label 
-                    className="cursor-pointer p-2 text-zinc-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800 relative group"
+                    className="cursor-pointer p-3 text-zinc-400 hover:text-white transition-all rounded-xl hover:bg-white/5 relative group"
                     title="Upload image (JPEG, PNG, GIF, WEBP)"
                   >
                     <input
@@ -362,12 +412,12 @@ export default function HomePage() {
                       onChange={(e) => handleFileUpload(e, 'image')}
                     />
                     <FaImage className="w-5 h-5" />
-                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-black rounded opacity-0 group-hover:opacity-100 whitespace-nowrap">
+                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 text-xs text-white bg-black/90 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                       Upload image
                     </span>
                   </label>
                   <label 
-                    className="cursor-pointer p-2 text-zinc-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800 relative group"
+                    className="cursor-pointer p-3 text-zinc-400 hover:text-white transition-all rounded-xl hover:bg-white/5 relative group"
                     title={`Upload video (max ${MAX_VIDEO_SIZE_MB}MB)`}
                   >
                     <input
@@ -377,16 +427,16 @@ export default function HomePage() {
                       onChange={(e) => handleFileUpload(e, 'video')}
                     />
                     <FaVideo className="w-5 h-5" />
-                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-black rounded opacity-0 group-hover:opacity-100 whitespace-nowrap">
+                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 text-xs text-white bg-black/90 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                       Upload video (max {MAX_VIDEO_SIZE_MB}MB)
                     </span>
                   </label>
                 </div>
                 <button
-                  className={`px-4 py-2 bg-white text-black rounded-lg font-semibold transition-colors ${
+                  className={`px-6 py-2.5 bg-white text-black rounded-xl font-semibold transition-all ${
                     uploadingMedia 
                       ? 'opacity-50 cursor-not-allowed'
-                      : 'hover:bg-zinc-200'
+                      : 'hover:bg-zinc-200 hover:shadow-lg transform hover:-translate-y-0.5'
                   }`}
                   onClick={handleCreatePost}
                   disabled={uploadingMedia}
@@ -397,30 +447,41 @@ export default function HomePage() {
             </div>
 
             {/* Posts Feed */}
-            <div className="space-y-4">
+            <div className="space-y-6">
               {posts.map((post) => (
-                <div key={post.id} className="bg-zinc-900 rounded-lg shadow p-4 border border-zinc-800">
+                <div 
+                  key={post.id} 
+                  className="bg-zinc-900/50 backdrop-blur-lg rounded-2xl shadow-xl p-6 border border-white/5 transform hover:border-white/10 transition-all duration-300"
+                >
                   <div className="flex items-center mb-4">
-                    <div className="relative w-10 h-10 rounded-full overflow-hidden mr-3 border border-white">
+                    <div className="relative w-12 h-12 rounded-full overflow-hidden mr-4 ring-2 ring-white/10">
                       <Image
                         src={post.author.avatarUrl || "/default-avatar.png"}
                         alt="Profile"
-                        width={40}
-                        height={40}
+                        width={48}
+                        height={48}
                         className="object-cover"
                       />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-white">{post.author.name || 'Anonymous'}</h3>
+                      <h3 className="font-semibold text-white hover:text-white/90 cursor-pointer transition-colors">
+                        {post.author.name || 'Anonymous'}
+                      </h3>
                       <p className="text-sm text-zinc-400">
-                        {new Date(post.createdAt).toLocaleString()}
+                        {new Date(post.createdAt).toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: 'numeric'
+                        })}
                       </p>
                     </div>
                   </div>
-                  <p className="text-zinc-100 mb-4">{post.content}</p>
+                  
+                  <p className="text-zinc-100 text-lg mb-4 leading-relaxed">{post.content}</p>
                   
                   {post.mediaUrl && (
-                    <div className="mb-4 rounded-lg overflow-hidden bg-zinc-950">
+                    <div className="mb-4 rounded-xl overflow-hidden bg-zinc-950/50 backdrop-blur-sm">
                       {post.mediaUrl.includes('.mp4') || post.mediaUrl.includes('.mov') || post.mediaUrl.includes('.webm') ? (
                         <video 
                           src={post.mediaUrl} 
@@ -447,34 +508,45 @@ export default function HomePage() {
                   )}
                   
                   {/* Post Actions */}
-                  <div className="flex items-center space-x-8 pt-2 border-t border-zinc-800">
-                    <button 
-                      onClick={() => handleLike(post.id)}
-                      className="flex items-center space-x-2 text-zinc-400 hover:text-red-500 transition-colors"
-                    >
-                      {likedPosts.has(post.id) ? (
-                        <FaHeart className="w-5 h-5 text-red-500" />
-                      ) : (
-                        <FaRegHeart className="w-5 h-5" />
-                      )}
-                      <span>{post._count?.like || 0}</span>
-                    </button>
+                  <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                    <div className="flex items-center gap-6">
+                      <button 
+                        onClick={() => handleLike(post.id)}
+                        className="flex items-center gap-2 text-zinc-400 hover:text-red-400 transition-all group"
+                      >
+                        {likedPosts.has(post.id) ? (
+                          <FaHeart className="w-5 h-5 text-red-400" />
+                        ) : (
+                          <FaRegHeart className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        )}
+                        <span>{post._count?.like || 0}</span>
+                      </button>
 
-                    <button 
-                      onClick={() => handleComment(post.id)}
-                      className="flex items-center space-x-2 text-zinc-400 hover:text-blue-500 transition-colors"
-                    >
-                      <FaRegComment className="w-5 h-5" />
-                      <span>{post._count?.comment || 0}</span>
-                    </button>
+                      <button 
+                        onClick={() => handleComment(post.id)}
+                        className="flex items-center gap-2 text-zinc-400 hover:text-blue-400 transition-all group"
+                      >
+                        <FaRegComment className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span>{post._count?.comment || 0}</span>
+                      </button>
 
-                    <button 
-                      onClick={() => handleRepost(post.id)}
-                      className="flex items-center space-x-2 text-zinc-400 hover:text-green-500 transition-colors"
-                    >
-                      <FaRetweet className="w-5 h-5" />
-                      <span>0</span>
-                    </button>
+                      <button 
+                        onClick={() => handleRepost(post.id)}
+                        className="flex items-center gap-2 text-zinc-400 hover:text-green-400 transition-all group"
+                      >
+                        <FaRetweet className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        <span>0</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <button className="text-zinc-400 hover:text-white transition-colors">
+                        <FaRegBookmark className="w-5 h-5" />
+                      </button>
+                      <button className="text-zinc-400 hover:text-white transition-colors">
+                        <FaShareAlt className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

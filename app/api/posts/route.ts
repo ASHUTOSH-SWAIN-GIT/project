@@ -10,7 +10,15 @@ export async function GET(req: NextRequest) {
     const posts = await prisma.post.findMany({
       where: userId ? { authorId: userId } : undefined,
       orderBy: { createdAt: "desc" },
-      include: { author: true, },
+      include: {
+        author: true,
+        _count: {
+          select: {
+            like: true,
+            comment: true
+          }
+        }
+      }
     })
 
     return NextResponse.json(posts)
@@ -36,6 +44,12 @@ export async function POST(req: NextRequest) {
       },
       include: {
         author: true,
+        _count: {
+          select: {
+            like: true,
+            comment: true
+          }
+        }
       },
     })
 
