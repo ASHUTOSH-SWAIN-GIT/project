@@ -3,20 +3,24 @@
 import { supabase } from "@/lib/supabase";
 import { FcGoogle } from "react-icons/fc";
 import { useEffect } from "react";
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
-
-
+  const router = useRouter();
 
   const handleGoogleLogin = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/Home`
+      }
     })
 
     if (error) {
       console.error('Google login error:', error.message)
     }
   }
+
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -33,13 +37,24 @@ export default function Home() {
             name: session.user.user_metadata.name,
             avatarUrl: session.user.user_metadata.avatar_url,
           }),
-        })
+        });
+        router.push('/Home');
       }
     }
   
-    getUser()
-  }, [])
+    getUser();
 
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        router.push('/Home');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center">
@@ -85,7 +100,6 @@ export default function Home() {
 
         {/* Google Sign up Button */}
         <button
-
           onClick={handleGoogleLogin}
           className="w-full flex items-center justify-center py-3 bg-white text-black font-medium rounded-lg hover:bg-neutral-200 transition shadow-md"
         >
