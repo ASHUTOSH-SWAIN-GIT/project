@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaCalendarAlt, FaEnvelope, FaMapMarkerAlt, FaLink, FaPencilAlt, FaSignOutAlt } from 'react-icons/fa';
+import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaCalendarAlt, FaEnvelope, FaMapMarkerAlt, FaLink, FaPencilAlt, FaSignOutAlt, FaArrowLeft } from 'react-icons/fa';
 import { useLoading } from '@/lib/contexts/LoadingContext';
 
 interface Post {
@@ -81,6 +81,7 @@ export default function ProfilePage() {
     try {
       startLoading(`Loading ${tab}`);
       let endpoint = '/api/posts';
+      
       switch (tab) {
         case 'posts':
           endpoint = `/api/posts?userId=${user.id}`;
@@ -97,6 +98,11 @@ export default function ProfilePage() {
       if (response.ok) {
         const data = await response.json();
         setPosts(data);
+        
+        // Update liked posts state if we're on the likes tab
+        if (tab === 'likes') {
+          setLikedPosts(new Set(data.map((post: Post) => post.id)));
+        }
       }
     } catch (error) {
       console.error(`Error fetching ${tab}:`, error);
@@ -180,6 +186,14 @@ export default function ProfilePage() {
       {/* Cover Photo */}
       <div className="h-48 bg-gradient-to-r from-blue-600 to-purple-600 relative">
         <div className="absolute inset-0 bg-black/20"></div>
+        {/* Back Button */}
+        <button 
+          onClick={() => router.push('/Home')}
+          className="absolute top-4 left-4 md:left-8 flex items-center gap-2 px-4 py-2 bg-black/30 hover:bg-black/40 text-white rounded-full backdrop-blur-sm transition-all group"
+        >
+          <FaArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+          <span>Back to Home</span>
+        </button>
       </div>
 
       {/* Profile Header */}

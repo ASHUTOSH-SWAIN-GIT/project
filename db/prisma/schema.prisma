@@ -30,6 +30,10 @@ model Post {
   authorId  String
   mediaUrl  String?   
 
+  repostedPost     Post?   @relation("Reposts", fields: [repostedPostId], references: [id])
+  repostedPostId   String?
+  reposts          Post[]  @relation("Reposts")
+
   comment Comment[]
   like    Like[]
 
