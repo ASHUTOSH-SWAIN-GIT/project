@@ -1,7 +1,40 @@
-import Image from "next/image";
+"use client";
+
+import { supabase } from "@/lib/utils/supabase";
 import { FcGoogle } from "react-icons/fc";
+import { useEffect } from "react";
 
 export default function Home() {
+
+
+
+  const handleGoogleLogin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+    })
+
+    if (error) {
+      console.error('Google login error:', error.message)
+    }
+  }
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        console.log('User:', session.user)
+      }
+    })
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        console.log('Logged in:', session.user)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+
   return (
     <div className="min-h-screen bg-black flex items-center justify-center">
       <div className="bg-white p-8 rounded-lg shadow-lg w-96">
@@ -46,8 +79,8 @@ export default function Home() {
 
         {/* Google Sign up Button */}
         <button
-         
-          
+
+          onClick={handleGoogleLogin}
           className="w-full flex items-center justify-center py-3 bg-white text-black font-medium rounded-lg hover:bg-neutral-200 transition shadow-md"
         >
           <FcGoogle className="w-5 h-5 mr-2" />
