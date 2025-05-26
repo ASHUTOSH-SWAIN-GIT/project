@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes, FaRegBookmark, FaShareAlt, FaInfoCircle, FaExclamationCircle } from 'react-icons/fa';
+import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes, FaRegBookmark, FaShareAlt,  FaExclamationCircle } from 'react-icons/fa';
 import { uploadFile } from '@/lib/uploadFile';
 import { useLoading } from '@/lib/contexts/LoadingContext';
 import { Loader, InlineLoader } from '@/components/Loader';
@@ -492,33 +492,6 @@ export default function HomePage() {
     router.push('/profile');
   };
 
-  const renderCommentButton = (post: Post) => {
-    const hasCommented = commentedPosts.has(post.id);
-    console.log('Rendering comment button for post:', post.id, 'hasCommented:', hasCommented);
-    
-    return (
-      <button 
-        onClick={() => handleComment(post.id)}
-        disabled={commentedPosts.has(post.id)}
-        className={`flex items-center gap-2 transition-all group ${
-          commentedPosts.has(post.id) 
-            ? 'text-blue-400 cursor-not-allowed' 
-            : 'text-zinc-400 hover:text-blue-400'
-        }`}
-      >
-        <FaRegComment 
-          className={`w-5 h-5 ${
-            commentedPosts.has(post.id) 
-              ? 'text-blue-400' 
-              : 'group-hover:scale-110 transition-transform'
-          }`} 
-        />
-        <span className={commentedPosts.has(post.id) ? 'text-blue-400' : ''}>
-          {post._count?.comments || 0}
-        </span>
-      </button>
-    );
-  };
 
   if (loading) {
     return <Loader message="Loading your feed" />;

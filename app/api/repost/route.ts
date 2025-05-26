@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,9 +33,9 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ repost, post: updatedPost }, { status: 201 })
-  } catch (err: Error | { code: string }) {
+  } catch (err: unknown) {
     // Handle unique constraint error (user already reposted this post)
-    if ('code' in err && err.code === "P2002") {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       return NextResponse.json({ error: "Post already reposted by this user" }, { status: 409 })
     }
 
