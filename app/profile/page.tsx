@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -39,10 +39,9 @@ export default function ProfilePage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('posts');
-  const [commentedPosts, setCommentedPosts] = useState<Set<string>>(new Set());
   const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
 
-  const fetchUserContent = async (tab: TabType, userId: string) => {
+  const fetchUserContent = useCallback(async (tab: TabType, userId: string) => {
     if (!userId) return;
 
     try {
@@ -72,21 +71,7 @@ export default function ProfilePage() {
     } finally {
       stopLoading();
     }
-  };
-
-  const fetchUserCommentedPosts = async (userId: string) => {
-    if (!userId) return;
-    
-    try {
-      const response = await fetch(`/api/posts/comments?userId=${userId}`);
-      if (response.ok) {
-        const commentedPosts = await response.json();
-        setCommentedPosts(new Set(commentedPosts.map((post: Post) => post.id)));
-      }
-    } catch (error) {
-      console.error('Error fetching commented posts:', error);
-    }
-  };
+  }, [startLoading, stopLoading]);
 
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -108,10 +93,7 @@ export default function ProfilePage() {
         if (response.ok) {
           const userData = await response.json();
           setUser(userData);
-          await Promise.all([
-            fetchUserContent(activeTab, userData.id),
-            fetchUserCommentedPosts(userData.id)
-          ]);
+          await fetchUserContent(activeTab, userData.id);
         } else {
           console.error('Failed to fetch user data');
         }
@@ -123,7 +105,7 @@ export default function ProfilePage() {
     };
 
     fetchUserInfo();
-  }, [activeTab]);
+  }, [activeTab, fetchUserContent]);
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
