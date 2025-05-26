@@ -28,4 +28,4 @@ export async function GET(
     console.error("Error fetching liked posts", err)
     return NextResponse.json({ error: "Failed to fetch liked posts" }, { status: 500 })
   }
-}
+} 
