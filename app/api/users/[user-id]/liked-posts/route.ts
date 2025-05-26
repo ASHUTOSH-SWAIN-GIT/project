@@ -1,8 +1,15 @@
 import { prisma } from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
 
-export async function GET(_: NextRequest, { params }: { params: { userId: string } }) {
-  const userId = params.userId
+export async function GET(req: NextRequest) {
+  // Extract userId from the URL path
+  const url = new URL(req.url)
+  const pathParts = url.pathname.split("/")
+  const userId = pathParts[pathParts.indexOf("users") + 1]
+
+  if (!userId) {
+    return NextResponse.json({ error: "Missing userId" }, { status: 400 })
+  }
 
   try {
     const likedPosts = await prisma.post.findMany({
