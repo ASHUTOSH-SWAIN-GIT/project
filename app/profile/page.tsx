@@ -134,38 +134,7 @@ export default function ProfilePage() {
     fetchUserContent(tab);
   };
 
-  const handleLike = async (postId: string) => {
-    if (!user) return;
 
-    try {
-      startLoading('Updating like');
-      const method = likedPosts.has(postId) ? 'DELETE' : 'POST';
-      const response = await fetch(`/api/posts/${postId}/like`, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId: user.id }),
-      });
-
-      if (response.ok) {
-        setLikedPosts(prev => {
-          const newSet = new Set(prev);
-          if (method === 'POST') {
-            newSet.add(postId);
-          } else {
-            newSet.delete(postId);
-          }
-          return newSet;
-        });
-        fetchUserContent(activeTab);
-      }
-    } catch (error) {
-      console.error('Error handling like:', error);
-    } finally {
-      stopLoading();
-    }
-  };
 
   const handleLogout = async () => {
     try {
