@@ -1,117 +1,98 @@
 "use client";
 
-import { supabase } from "@/lib/supabase";
-import { FcGoogle } from "react-icons/fc";
-import { useEffect } from "react";
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import { FaGoogle } from 'react-icons/fa';
+import { useLoading } from '@/lib/contexts/LoadingContext';
+import { Loader } from '@/components/Loader';
 
-export default function Home() {
+export const viewport = {
+  themeColor: '#000000',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<Loader message="Loading" />}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
-
-  const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/Home`
-      }
-    })
-
-    if (error) {
-      console.error('Google login error:', error.message)
-    }
-  }
+  const { startLoading, stopLoading } = useLoading();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const getUser = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-  
-      if (session?.user) {
-        await fetch("/api/auth/sync-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            authId: session.user.id,
-            email: session.user.email,
-            name: session.user.user_metadata.name,
-            avatarUrl: session.user.user_metadata.avatar_url,
-          }),
-        });
-        router.push('/Home');
+    const checkSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (session && !error) {
+          router.push('/Home');
+        }
+      } catch (error) {
+        console.error('Error checking session:', error);
+      } finally {
+        setLoading(false);
       }
-    }
-  
-    getUser();
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        router.push('/Home');
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
     };
+
+    checkSession();
   }, [router]);
 
+  const handleGoogleLogin = async () => {
+    try {
+      startLoading('Signing in with Google');
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+
+      if (error) {
+        console.error('Error signing in with Google:', error.message);
+      }
+    } catch (error) {
+      console.error('Error during Google sign in:', error);
+    } finally {
+      stopLoading();
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <Loader message="Loading" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-lg w-96">
-        <h1 className="text-2xl font-bold text-center mb-6 text-black">Login</h1>
-
-        {/* Email Input */}
-        <div className="mb-4">
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-            Email
-          </label>
-          <input
-            type="email"
-            id="email"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400"
-            placeholder="Enter your email"
-          />
+    <div className="min-h-screen bg-gradient-to-b from-black to-zinc-900 flex flex-col items-center justify-center p-4">
+      <div className="max-w-md w-full space-y-8 bg-zinc-900/50 backdrop-blur-sm p-8 rounded-2xl shadow-lg border border-white/5">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 text-transparent bg-clip-text mb-2">
+            Contactify
+          </h1>
+          <p className="text-zinc-400">Connect with your network</p>
         </div>
 
-        {/* Password Input */}
-        <div className="mb-6">
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-            Password
-          </label>
-          <input
-            type="password"
-            id="password"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400"
-            placeholder="Create a password"
-          />
-        </div>
-
-        {/* Sign up Button */}
-        <button className="w-full bg-black text-white py-2 rounded-lg hover:bg-gray-800 transition-colors">
-          Sign Up
-        </button>
-
-        <div className="flex items-center my-4">
-          <div className="flex-1 border-t border-gray-300"></div>
-          <span className="px-4 text-gray-500 text-sm">or</span>
-          <div className="flex-1 border-t border-gray-300"></div>
-        </div>
-
-        {/* Google Sign up Button */}
         <button
           onClick={handleGoogleLogin}
-          className="w-full flex items-center justify-center py-3 bg-white text-black font-medium rounded-lg hover:bg-neutral-200 transition shadow-md"
+          className="w-full flex items-center justify-center gap-3 px-6 py-3 bg-white text-black rounded-xl font-medium hover:bg-zinc-100 transition-colors"
         >
-          <FcGoogle className="w-5 h-5 mr-2" />
-          Login with Google
+          <FaGoogle className="w-5 h-5" />
+          <span>Continue with Google</span>
         </button>
 
-        <p className="mt-4 text-center text-sm text-gray-600">
-          Already have an account?{" "}
-          <a href="/login" className="text-black hover:underline">
-            Log in
-          </a>
+        <p className="text-center text-sm text-zinc-500">
+          By continuing, you agree to our Terms of Service and Privacy Policy
         </p>
       </div>
     </div>

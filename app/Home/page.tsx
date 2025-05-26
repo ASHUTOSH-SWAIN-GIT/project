@@ -1,13 +1,36 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes, FaRegBookmark, FaShareAlt,  FaExclamationCircle } from 'react-icons/fa';
+import { FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes, FaRegBookmark, FaShareAlt, FaExclamationCircle } from 'react-icons/fa';
 import { uploadFile } from '@/lib/uploadFile';
 import { useLoading } from '@/lib/contexts/LoadingContext';
 import { Loader, InlineLoader } from '@/components/Loader';
+
+interface Post {
+  id: string;
+  content: string;
+  createdAt: string;
+  author: {
+    name: string;
+    avatarUrl: string;
+  };
+  _count?: {
+    comments: number;
+    reposts: number;
+  };
+}
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl: string;
+  bio?: string;
+  createdAt: string;
+}
 
 interface Comment {
   id: string;
@@ -19,96 +42,29 @@ interface Comment {
   };
 }
 
-interface Post {
-  id: string;
-  content: string;
-  createdAt: string;
-  mediaUrl?: string;
-  author: {
-    name: string;
-    avatarUrl: string;
-  };
-  _count: {
-    like: number;
-    comments: number;
-    reposts: number;
-  };
-}
-
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  avatarUrl: string;
-}
-
-interface ImageModalProps {
-  imageUrl: string;
-  onClose: () => void;
-}
-
-interface ToastProps {
-  message: string;
-  onClose: () => void;
-}
-
-const ImageModal = ({ imageUrl, onClose }: ImageModalProps) => {
-  return (
-    <div 
-      className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div className="relative max-w-7xl w-full h-[80vh] flex items-center justify-center">
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
-        >
-          <FaTimes className="w-6 h-6" />
-        </button>
-        <div className="relative w-full h-full" onClick={e => e.stopPropagation()}>
-          <Image
-            src={imageUrl}
-            alt="Enlarged post image"
-            fill
-            className="object-contain"
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
-            priority
-            quality={90}
-          />
-        </div>
-      </div>
-    </div>
-  );
+export const viewport = {
+  themeColor: '#000000',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
-
-const Toast = ({ message, onClose }: ToastProps) => {
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      onClose();
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  return (
-    <div className="fixed top-4 right-4 z-50 bg-black/90 text-white px-6 py-3 rounded-lg shadow-xl flex items-center gap-3 border border-white/10">
-      <FaExclamationCircle className="text-amber-500 w-5 h-5" />
-      <p>{message}</p>
-    </div>
-  );
-};
-
-const MAX_VIDEO_SIZE_MB = 100; // Maximum video size in MB
-const SUPPORTED_VIDEO_FORMATS = ['video/mp4', 'video/webm', 'video/quicktime'];
-const SUPPORTED_IMAGE_FORMATS = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
 export default function HomePage() {
+  return (
+    <Suspense fallback={<Loader message="Loading your feed" />}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
   const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [newPost, setNewPost] = useState('');
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+  const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [mediaToUpload, setMediaToUpload] = useState<File | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -117,107 +73,73 @@ export default function HomePage() {
   const [comments, setComments] = useState<{ [postId: string]: Comment[] }>({});
   const [newComments, setNewComments] = useState<{ [postId: string]: string }>({});
   const [loadingComments, setLoadingComments] = useState<Set<string>>(new Set());
-  const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
-  const [commentedPosts, setCommentedPosts] = useState<Set<string>>(new Set());
   const { startLoading, stopLoading } = useLoading();
   const [toast, setToast] = useState<string | null>(null);
 
-  const fetchPosts = async () => {
-    try {
-      const response = await fetch('/api/posts');
-      if (response.ok) {
-        const data = await response.json();
-        setPosts(data);
-      }
-    } catch (error) {
-      console.error('Error fetching posts:', error);
-    }
-  };
-
-  const fetchUserLikedPosts = async () => {
-    if (!user) return;
-    
-    try {
-      const response = await fetch(`/api/users/${user.id}/liked-posts`);
-      if (response.ok) {
-        const likedPosts = await response.json();
-        setLikedPosts(new Set(likedPosts.map((post: Post) => post.id)));
-      }
-    } catch (error) {
-      console.error('Error fetching liked posts:', error);
-    }
-  };
-
-  const fetchUserRepostedPosts = async () => {
-    if (!user) return;
-    
-    try {
-      const response = await fetch(`/api/posts/reposts?userId=${user.id}`);
-      if (response.ok) {
-        const repostedPosts = await response.json();
-        setRepostedPosts(new Set(repostedPosts.map((post: Post) => post.id)));
-      }
-    } catch (error) {
-      console.error('Error fetching reposted posts:', error);
-    }
-  };
-
-  const fetchUserCommentedPosts = async () => {
-    if (!user) return;
-    
-    try {
-      const response = await fetch(`/api/comments?userId=${user.id}`);
-      if (response.ok) {
-        const commentedPosts = await response.json();
-        setCommentedPosts(new Set(commentedPosts.map((post: Post) => post.id)));
-      }
-    } catch (error) {
-      console.error('Error fetching commented posts:', error);
-    }
-  };
-
-  const fetchUserInfo = async () => {
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session) {
-        console.error('No session found');
-        router.push('/');
-        return;
-      }
-
-      const response = await fetch('/api/current-user', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
+  useEffect(() => {
+    const fetchPosts = async () => {
+      try {
+        const response = await fetch('/api/posts');
+        if (response.ok) {
+          const data = await response.json();
+          setPosts(data);
         }
-      });
-      
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-        await Promise.all([
-          fetchPosts(),
-          fetchUserLikedPosts(),
-          fetchUserRepostedPosts(),
-          fetchUserCommentedPosts()
-        ]);
-      } else {
-        if (response.status === 401) {
-          await supabase.auth.signOut();
+      } catch (error) {
+        console.error('Error fetching posts:', error);
+      }
+    };
+
+    const fetchUserRepostedPosts = async (userId: string) => {
+      try {
+        const response = await fetch(`/api/posts/reposts?userId=${userId}`);
+        if (response.ok) {
+          const repostedPosts = await response.json();
+          setRepostedPosts(new Set(repostedPosts.map((post: Post) => post.id)));
+        }
+      } catch (error) {
+        console.error('Error fetching reposted posts:', error);
+      }
+    };
+
+    const fetchUserInfo = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !session) {
+          console.error('No session found');
           router.push('/');
           return;
         }
-        console.error('Failed to fetch user data');
-      }
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-      router.push('/');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => {
+        const response = await fetch('/api/current-user', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+        
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+          await Promise.all([
+            fetchPosts(),
+            fetchUserRepostedPosts(userData.id)
+          ]);
+        } else {
+          if (response.status === 401) {
+            await supabase.auth.signOut();
+            router.push('/');
+            return;
+          }
+          console.error('Failed to fetch user data');
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        router.push('/');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchUserInfo();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -225,7 +147,6 @@ export default function HomePage() {
         fetchUserInfo();
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
-        setLikedPosts(new Set());
         setRepostedPosts(new Set());
         router.push('/');
       }
@@ -234,630 +155,453 @@ export default function HomePage() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, startLoading, stopLoading, user]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    setMediaToUpload(file);
     setUploadError(null);
 
-    // Validate file type
-    if (type === 'image' && !SUPPORTED_IMAGE_FORMATS.includes(file.type)) {
-      setUploadError('Please upload a supported image format (JPEG, PNG, GIF, WEBP)');
-      return;
+    if (type === 'image') {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setSelectedImage(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
     }
-    if (type === 'video' && !SUPPORTED_VIDEO_FORMATS.includes(file.type)) {
-      setUploadError('Please upload a supported video format (MP4, WebM, QuickTime)');
-      return;
-    }
-
-    // Validate video file size
-    if (type === 'video' && file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
-      setUploadError(`Video size must be less than ${MAX_VIDEO_SIZE_MB}MB`);
-      return;
-    }
-
-    setMediaToUpload(file);
   };
 
-  const handleCreatePost = async () => {
-    if ((!newPost.trim() && !mediaToUpload) || !user) return;
-    
+  const handleCreatePost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || (!newPost.trim() && !mediaToUpload)) return;
+
     try {
-      startLoading('Creating post');
+      startLoading('Creating post...');
       setUploadingMedia(true);
-      let mediaUrl = '';
-      
+
+      let mediaUrl = null;
       if (mediaToUpload) {
-        mediaUrl = await uploadFile(mediaToUpload);
+        try {
+          mediaUrl = await uploadFile(mediaToUpload);
+        } catch (error) {
+          console.error('Error uploading media:', error);
+          setUploadError('Failed to upload media');
+          return;
+        }
       }
 
       const response = await fetch('/api/posts', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content: newPost,
-          authorId: user.id,
+          content: newPost.trim(),
+          userId: user.id,
           mediaUrl
         }),
       });
 
       if (response.ok) {
-        const post = await response.json();
-        const newPost = {
-          ...post,
-          _count: post._count || { like: 0, comments: 0, reposts: 0 }
-        };
-        setPosts([newPost, ...posts]);
+        const newPostData = await response.json();
+        setPosts(prev => [newPostData, ...prev]);
         setNewPost('');
         setMediaToUpload(null);
+        setSelectedImage(null);
+        setUploadError(null);
+        setToast('Post created successfully!');
       } else {
-        console.error('Failed to create post');
+        const data = await response.json();
+        setToast(data.error || 'Failed to create post');
       }
     } catch (error) {
       console.error('Error creating post:', error);
+      setToast('Failed to create post');
     } finally {
       setUploadingMedia(false);
       stopLoading();
     }
   };
 
-  const handleLike = async (postId: string) => {
+  const handleRepost = async (postId: string) => {
     if (!user) return;
-    
-    if (likedPosts.has(postId)) {
-      setToast('You have already liked this post');
-      return;
-    }
 
     try {
-      startLoading('Updating like');
-      const response = await fetch('/api/likes', {
+      startLoading('Reposting...');
+      const response = await fetch('/api/repost', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          userId: user.id,
-          postId 
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, postId }),
       });
 
       if (response.ok) {
-        setLikedPosts(prev => {
-          const newSet = new Set(prev);
-          newSet.add(postId);
-          return newSet;
-        });
-
-        setPosts(prevPosts => 
-          prevPosts.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                _count: {
-                  ...post._count,
-                  like: post._count.like + 1
-                }
-              };
-            }
-            return post;
-          })
-        );
-      }
-    } catch (error) {
-      console.error('Error handling like:', error);
-    } finally {
-      stopLoading();
-    }
-  };
-
-  const fetchComments = async (postId: string) => {
-    try {
-      startLoading('Loading comments');
-      setLoadingComments(prev => new Set([...prev, postId]));
-      const response = await fetch(`/api/comments?postId=${postId}`);
-      if (response.ok) {
+        const { post } = await response.json();
+        setPosts(prevPosts => prevPosts.map(p => p.id === post.id ? post : p));
+        setRepostedPosts(prev => new Set([...prev, postId]));
+        setToast('Post reposted successfully!');
+      } else {
         const data = await response.json();
-        setComments(prev => ({ ...prev, [postId]: data }));
+        setToast(data.error || 'Failed to repost');
       }
     } catch (error) {
-      console.error('Error fetching comments:', error);
+      console.error('Error reposting:', error);
+      setToast('Failed to repost');
     } finally {
-      setLoadingComments(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(postId);
-        return newSet;
-      });
       stopLoading();
     }
   };
 
   const handleComment = async (postId: string) => {
-    setOpenCommentBoxes(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(postId)) {
-        newSet.delete(postId);
-      } else {
-        newSet.add(postId);
-        // Fetch comments when opening the comment box
-        if (!comments[postId]) {
-          fetchComments(postId);
-        }
-      }
-      return newSet;
-    });
-  };
-
-  const submitComment = async (postId: string) => {
-    if (!user || !newComments[postId]?.trim() || commentedPosts.has(postId)) return;
+    if (!user || !newComments[postId]?.trim()) return;
 
     try {
-      startLoading('Posting comment');
+      startLoading('Adding comment...');
       const response = await fetch('/api/comments', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          postId,
+          content: newComments[postId].trim(),
           userId: user.id,
-          content: newComments[postId],
+          postId
         }),
       });
 
       if (response.ok) {
         const { comment, post } = await response.json();
-        
-        // Update comments for this post
         setComments(prev => ({
           ...prev,
-          [postId]: [...(prev[postId] || []), comment],
+          [postId]: [...(prev[postId] || []), comment]
         }));
-        
-        // Clear comment input
+        setPosts(prevPosts => prevPosts.map(p => p.id === post.id ? post : p));
         setNewComments(prev => ({ ...prev, [postId]: '' }));
-        
-        // Mark post as commented
-        setCommentedPosts(prev => {
-          const newSet = new Set(prev);
-          newSet.add(postId);
-          return newSet;
-        });
-        
-        // Update post with new counts
-        setPosts(prev =>
-          prev.map(p =>
-            p.id === postId ? { ...p, _count: post._count } : p
-          )
-        );
+        setToast('Comment added successfully!');
+      } else {
+        const data = await response.json();
+        setToast(data.error || 'Failed to add comment');
       }
     } catch (error) {
-      console.error('Error submitting comment:', error);
+      console.error('Error adding comment:', error);
+      setToast('Failed to add comment');
     } finally {
       stopLoading();
     }
   };
 
-  const handleRepost = async (postId: string) => {
-    if (!user) return;
-    
-    if (repostedPosts.has(postId)) {
-      setToast('You have already reposted this post');
-      return;
-    }
-
-    try {
-      startLoading('Updating repost');
-      const response = await fetch('/api/repost', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          userId: user.id,
-          postId 
-        }),
-      });
-
-      if (response.ok) {
-        const { post } = await response.json();
-        
-        setRepostedPosts(prev => {
-          const newSet = new Set(prev);
-          newSet.add(postId);
-          return newSet;
-        });
-
-        setPosts(prevPosts => 
-          prevPosts.map(p => 
-            p.id === postId ? { ...p, _count: post._count } : p
-          )
-        );
+  const toggleCommentBox = async (postId: string) => {
+    const newOpenCommentBoxes = new Set(openCommentBoxes);
+    if (openCommentBoxes.has(postId)) {
+      newOpenCommentBoxes.delete(postId);
+    } else {
+      newOpenCommentBoxes.add(postId);
+      if (!comments[postId]) {
+        try {
+          setLoadingComments(prev => new Set([...prev, postId]));
+          const response = await fetch(`/api/comments?postId=${postId}`);
+          if (response.ok) {
+            const fetchedComments = await response.json();
+            setComments(prev => ({ ...prev, [postId]: fetchedComments }));
+          }
+        } catch (error) {
+          console.error('Error fetching comments:', error);
+        } finally {
+          setLoadingComments(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(postId);
+            return newSet;
+          });
+        }
       }
-    } catch (error) {
-      console.error('Error handling repost:', error);
-    } finally {
-      stopLoading();
     }
+    setOpenCommentBoxes(newOpenCommentBoxes);
   };
 
   const handleProfileClick = () => {
     router.push('/profile');
   };
 
-
   if (loading) {
-    return <Loader message="Loading your feed" />;
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <Loader message="Loading your feed" />
+      </div>
+    );
   }
 
   if (!user) {
-    // Instead of showing a message, redirect to login
-    router.push('/');
-    return null;
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-white">Please sign in to view feed</div>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-black to-zinc-900">
-      {toast && (
-        <Toast 
-          message={toast} 
-          onClose={() => setToast(null)} 
-        />
-      )}
-      
-      {selectedImage && <ImageModal imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />}
-      
-      <div className="max-w-6xl mx-auto py-8 px-4">
-        <div className="grid grid-cols-12 gap-6">
-          {/* Left Sidebar - User Profile */}
-          <div className="col-span-3">
-            <div className="bg-zinc-900/50 backdrop-blur-lg rounded-2xl shadow-xl p-6 border border-white/5 sticky top-8">
-              <div className="flex flex-col items-center">
-                <div 
-                  onClick={handleProfileClick}
-                  className="relative w-24 h-24 rounded-full overflow-hidden mb-4 ring-4 ring-white/10 cursor-pointer transform hover:scale-105 transition-all duration-300 hover:ring-white/20"
+      {/* Header */}
+      <header className="sticky top-0 z-50 backdrop-blur-lg bg-black/50 border-b border-white/10">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 text-transparent bg-clip-text">
+            Contactify
+          </h1>
+          <button
+            onClick={handleProfileClick}
+            className="flex items-center gap-3 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
+          >
+            <div className="relative w-8 h-8 rounded-full overflow-hidden ring-2 ring-white/10">
+              <Image
+                src={user?.avatarUrl || "/default-avatar.png"}
+                alt="Profile"
+                width={32}
+                height={32}
+                className="object-cover"
+              />
+            </div>
+            <span className="text-white font-medium">{user?.name}</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-4 py-6">
+        {/* Create Post */}
+        <div className="bg-zinc-900/50 backdrop-blur-sm rounded-xl shadow-lg p-6 mb-8 border border-white/5">
+          <form onSubmit={handleCreatePost} className="space-y-4">
+            <div className="flex gap-4">
+              <div className="relative w-12 h-12 rounded-full overflow-hidden ring-2 ring-white/10">
+                <Image
+                  src={user?.avatarUrl || "/default-avatar.png"}
+                  alt="Profile"
+                  width={48}
+                  height={48}
+                  className="object-cover"
+                />
+              </div>
+              <textarea
+                value={newPost}
+                onChange={(e) => setNewPost(e.target.value)}
+                placeholder="What's on your mind?"
+                className="flex-1 bg-transparent text-white placeholder-zinc-400 resize-none focus:outline-none text-lg"
+                rows={2}
+              />
+            </div>
+
+            {selectedImage && (
+              <div className="relative">
+                <Image
+                  src={selectedImage}
+                  alt="Selected"
+                  width={800}
+                  height={600}
+                  className="w-full h-64 object-cover rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedImage(null);
+                    setMediaToUpload(null);
+                  }}
+                  className="absolute top-2 right-2 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors"
                 >
+                  <FaTimes className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {uploadError && (
+              <div className="flex items-center gap-2 text-red-500">
+                <FaExclamationCircle className="w-4 h-4" />
+                <span>{uploadError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-4 border-t border-white/5">
+              <div className="flex gap-4">
+                <label className="cursor-pointer text-zinc-400 hover:text-white transition-colors">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileUpload(e, 'image')}
+                    className="hidden"
+                  />
+                  <FaImage className="w-5 h-5" />
+                </label>
+                <label className="cursor-pointer text-zinc-400 hover:text-white transition-colors">
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={(e) => handleFileUpload(e, 'video')}
+                    className="hidden"
+                  />
+                  <FaVideo className="w-5 h-5" />
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={(!newPost.trim() && !mediaToUpload) || uploadingMedia}
+                className="px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 disabled:cursor-not-allowed text-white rounded-full font-medium transition-colors"
+              >
+                {uploadingMedia ? <InlineLoader /> : 'Post'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Posts */}
+        <div className="space-y-6">
+          {posts.map((post) => (
+            <div key={post.id} className="bg-zinc-900/50 backdrop-blur-sm rounded-xl shadow-lg p-6 border border-white/5">
+              {/* Post Header */}
+              <div className="flex items-center mb-4">
+                <div className="relative w-12 h-12 rounded-full overflow-hidden mr-4 ring-2 ring-white/10">
                   <Image
-                    src={user?.avatarUrl || "/default-avatar.png"}
+                    src={post.author.avatarUrl || "/default-avatar.png"}
                     alt="Profile"
-                    width={96}
-                    height={96}
+                    width={48}
+                    height={48}
                     className="object-cover"
                   />
                 </div>
-                <h2 
-                  onClick={handleProfileClick}
-                  className="text-xl font-semibold text-white cursor-pointer hover:text-white/90 transition-colors"
-                >
-                  {user?.name || 'Anonymous'}
-                </h2>
-                <p className="text-zinc-400 text-sm mt-1">{user?.email}</p>
-
-                {/* Active Status Indicator */}
-                <div className="mt-6 w-full">
-                  <div className="bg-zinc-800/50 backdrop-blur-sm rounded-xl p-4 border border-white/5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
-                          <div className="absolute inset-0 w-3 h-3 bg-emerald-500 rounded-full animate-ping opacity-75"></div>
-                        </div>
-                        <span className="text-emerald-500 font-medium">Active</span>
-                      </div>
-                      <div className="bg-zinc-700/50 px-2 py-1 rounded-md">
-                        <span className="text-xs text-zinc-400">Now</span>
-                      </div>
-                    </div>
-                    <div className="mt-3 text-xs text-zinc-500">
-                      Last active: {new Date().toLocaleString('en-US', { 
-                        hour: 'numeric', 
-                        minute: 'numeric',
-                        hour12: true 
-                      })}
-                    </div>
-                  </div>
+                <div>
+                  <h3 className="font-semibold text-white hover:underline cursor-pointer">
+                    {post.author.name}
+                  </h3>
+                  <p className="text-sm text-zinc-400">
+                    {new Date(post.createdAt).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: 'numeric'
+                    })}
+                  </p>
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* Main Content - Post Creation and Feed */}
-          <div className="col-span-9 space-y-6">
-            {/* Create Post */}
-            <div className="bg-zinc-900/50 backdrop-blur-lg rounded-2xl shadow-xl p-6 border border-white/5">
-              <textarea
-                className="w-full p-4 bg-zinc-800/50 text-white border-none rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-white/20 placeholder-zinc-500 transition-all"
-                placeholder="What's on your mind?"
-                rows={3}
-                value={newPost}
-                onChange={(e) => setNewPost(e.target.value)}
-              />
-              
-              {mediaToUpload && (
-                <div className="mt-3 p-3 bg-zinc-800/50 rounded-xl text-zinc-400 backdrop-blur-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="truncate">{mediaToUpload.name}</span>
-                    <button 
-                      onClick={() => {
-                        setMediaToUpload(null);
-                        setUploadError(null);
-                      }}
-                      className="text-red-400 hover:text-red-300 ml-2 transition-colors"
-                    >
-                      <FaTimes className="w-4 h-4" />
-                    </button>
-                  </div>
-                  {mediaToUpload.type.startsWith('video/') && (
-                    <div className="text-sm text-zinc-500">
-                      Size: {(mediaToUpload.size / (1024 * 1024)).toFixed(1)}MB
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Post Content */}
+              <p className="text-white text-lg mb-4 whitespace-pre-wrap">{post.content}</p>
 
-              {uploadError && (
-                <div className="mt-3 text-red-400 text-sm bg-red-500/10 p-3 rounded-xl">
-                  {uploadError}
-                </div>
-              )}
-
-              <div className="flex items-center justify-between mt-4">
-                <div className="flex gap-3">
-                  <label 
-                    className="cursor-pointer p-3 text-zinc-400 hover:text-white transition-all rounded-xl hover:bg-white/5 relative group"
-                    title="Upload image (JPEG, PNG, GIF, WEBP)"
+              {/* Post Actions */}
+              <div className="flex items-center justify-between pt-4 border-t border-zinc-800">
+                <div className="flex items-center gap-6">
+                  {/* Comment button */}
+                  <button
+                    onClick={() => toggleCommentBox(post.id)}
+                    className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"
                   >
-                    <input
-                      type="file"
-                      accept={SUPPORTED_IMAGE_FORMATS.join(',')}
-                      className="hidden"
-                      onChange={(e) => handleFileUpload(e, 'image')}
-                    />
-                    <FaImage className="w-5 h-5" />
-                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 text-xs text-white bg-black/90 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                      Upload image
-                    </span>
-                  </label>
-                  <label 
-                    className="cursor-pointer p-3 text-zinc-400 hover:text-white transition-all rounded-xl hover:bg-white/5 relative group"
-                    title={`Upload video (max ${MAX_VIDEO_SIZE_MB}MB)`}
+                    <FaRegComment className="w-5 h-5" />
+                    <span>{post._count?.comments || 0}</span>
+                  </button>
+
+                  {/* Repost button */}
+                  <button
+                    onClick={() => handleRepost(post.id)}
+                    className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"
                   >
-                    <input
-                      type="file"
-                      accept={SUPPORTED_VIDEO_FORMATS.join(',')}
-                      className="hidden"
-                      onChange={(e) => handleFileUpload(e, 'video')}
-                    />
-                    <FaVideo className="w-5 h-5" />
-                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 text-xs text-white bg-black/90 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                      Upload video (max {MAX_VIDEO_SIZE_MB}MB)
+                    <FaRetweet className={`w-5 h-5 ${
+                      repostedPosts.has(post.id) ? 'text-green-500' : ''
+                    }`} />
+                    <span className={repostedPosts.has(post.id) ? 'text-green-500' : ''}>
+                      {post._count?.reposts || 0}
                     </span>
-                  </label>
+                  </button>
+
+                  {/* Share button */}
+                  <button className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors">
+                    <FaShareAlt className="w-5 h-5" />
+                  </button>
+
+                  {/* Bookmark button */}
+                  <button className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors">
+                    <FaRegBookmark className="w-5 h-5" />
+                  </button>
                 </div>
-                <button
-                  className={`px-6 py-2.5 bg-white text-black rounded-xl font-semibold transition-all ${
-                    uploadingMedia 
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'hover:bg-zinc-200 hover:shadow-lg transform hover:-translate-y-0.5'
-                  }`}
-                  onClick={handleCreatePost}
-                  disabled={uploadingMedia}
-                >
-                  {uploadingMedia ? 'Uploading...' : 'Post'}
-                </button>
               </div>
-            </div>
 
-            {/* Posts Feed */}
-            <div className="space-y-6">
-              {posts.map((post) => (
-                <div 
-                  key={post.id} 
-                  className="bg-zinc-900/50 backdrop-blur-lg rounded-2xl shadow-xl p-6 border border-white/5 transform hover:border-white/10 transition-all duration-300"
-                >
-                  <div className="flex items-center mb-4">
-                    <div className="relative w-12 h-12 rounded-full overflow-hidden mr-4 ring-2 ring-white/10">
+              {/* Comments Section */}
+              {openCommentBoxes.has(post.id) && (
+                <div className="mt-4 space-y-4">
+                  <div className="flex gap-4">
+                    <div className="relative w-8 h-8 rounded-full overflow-hidden ring-2 ring-white/10">
                       <Image
-                        src={post.author.avatarUrl || "/default-avatar.png"}
+                        src={user?.avatarUrl || "/default-avatar.png"}
                         alt="Profile"
-                        width={48}
-                        height={48}
+                        width={32}
+                        height={32}
                         className="object-cover"
                       />
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-white hover:text-white/90 cursor-pointer transition-colors">
-                        {post.author.name || 'Anonymous'}
-                      </h3>
-                      <p className="text-sm text-zinc-400">
-                        {new Date(post.createdAt).toLocaleString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: 'numeric',
-                          minute: 'numeric'
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <p className="text-zinc-100 text-lg mb-4 leading-relaxed">{post.content}</p>
-                  
-                  {post.mediaUrl && (
-                    <div className="mb-4 rounded-xl overflow-hidden bg-zinc-950/50 backdrop-blur-sm">
-                      {post.mediaUrl.includes('.mp4') || post.mediaUrl.includes('.mov') || post.mediaUrl.includes('.webm') ? (
-                        <video 
-                          src={post.mediaUrl} 
-                          controls 
-                          preload="metadata"
-                          className="w-full max-h-[512px] object-contain"
-                          playsInline
-                        />
-                      ) : (
-                        <div 
-                          className="cursor-pointer transition-transform hover:opacity-90"
-                          onClick={() => post.mediaUrl && setSelectedImage(post.mediaUrl)}
+                    <div className="flex-1">
+                      <textarea
+                        value={newComments[post.id] || ''}
+                        onChange={(e) => setNewComments(prev => ({ ...prev, [post.id]: e.target.value }))}
+                        placeholder="Write a comment..."
+                        className="w-full bg-transparent text-white placeholder-zinc-400 resize-none focus:outline-none"
+                        rows={1}
+                      />
+                      <div className="flex justify-end mt-2">
+                        <button
+                          onClick={() => handleComment(post.id)}
+                          disabled={!newComments[post.id]?.trim()}
+                          className="px-4 py-1 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 disabled:cursor-not-allowed text-white rounded-full text-sm font-medium transition-colors"
                         >
-                          <Image
-                            src={post.mediaUrl}
-                            alt="Post media"
-                            width={512}
-                            height={512}
-                            className="w-full max-h-[512px] object-contain"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* Post Actions */}
-                  <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                    <div className="flex items-center gap-6">
-                      <button 
-                        onClick={() => handleLike(post.id)}
-                        disabled={likedPosts.has(post.id)}
-                        className={`flex items-center gap-2 transition-all group ${
-                          likedPosts.has(post.id) ? 'text-red-400 cursor-not-allowed' : 'text-zinc-400 hover:text-red-400'
-                        }`}
-                      >
-                        {likedPosts.has(post.id) ? (
-                          <FaHeart className="w-5 h-5 text-red-400" />
-                        ) : (
-                          <FaRegHeart className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        )}
-                        <span className={likedPosts.has(post.id) ? 'text-red-400' : ''}>
-                          {post._count?.like || 0}
-                        </span>
-                      </button>
-
-                      <button 
-                        onClick={() => handleComment(post.id)}
-                        disabled={commentedPosts.has(post.id)}
-                        className={`flex items-center gap-2 transition-all group ${
-                          commentedPosts.has(post.id) ? 'text-blue-400 cursor-not-allowed' : 'text-zinc-400 hover:text-blue-400'
-                        }`}
-                      >
-                        <FaRegComment 
-                          className={`w-5 h-5 ${
-                            commentedPosts.has(post.id) ? 'text-blue-400' : 'group-hover:scale-110 transition-transform'
-                          }`} 
-                        />
-                        <span className={commentedPosts.has(post.id) ? 'text-blue-400' : ''}>
-                          {post._count?.comments || 0}
-                        </span>
-                      </button>
-
-                      <button 
-                        onClick={() => handleRepost(post.id)}
-                        disabled={repostedPosts.has(post.id)}
-                        className={`flex items-center gap-2 transition-all group ${
-                          repostedPosts.has(post.id) ? 'text-green-400 cursor-not-allowed' : 'text-zinc-400 hover:text-green-400'
-                        }`}
-                      >
-                        <FaRetweet 
-                          className={`w-5 h-5 ${
-                            repostedPosts.has(post.id) ? 'text-green-400' : 'group-hover:scale-110 transition-transform'
-                          }`}
-                        />
-                        <span className={repostedPosts.has(post.id) ? 'text-green-400' : ''}>
-                          {post._count?.reposts || 0}
-                        </span>
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <button className="text-zinc-400 hover:text-white transition-colors">
-                        <FaRegBookmark className="w-5 h-5" />
-                      </button>
-                      <button className="text-zinc-400 hover:text-white transition-colors">
-                        <FaShareAlt className="w-5 h-5" />
-                      </button>
+                          Comment
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Comments Section */}
-                  {openCommentBoxes.has(post.id) && (
-                    <div className="mt-4 pt-4 border-t border-white/5">
-                      {/* Comment Input */}
-                      <div className="flex gap-3 mb-4">
-                        <div className="relative w-8 h-8 rounded-full overflow-hidden">
-                          <Image
-                            src={user?.avatarUrl || "/default-avatar.png"}
-                            alt="Profile"
-                            width={32}
-                            height={32}
-                            className="object-cover"
-                          />
-                        </div>
-                        <div className="flex-1 flex gap-2">
-                          <input
-                            type="text"
-                            value={newComments[post.id] || ''}
-                            onChange={(e) => setNewComments(prev => ({ ...prev, [post.id]: e.target.value }))}
-                            placeholder="Write a comment..."
-                            className="flex-1 bg-zinc-800/50 rounded-xl px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-white/20"
-                            onKeyPress={(e) => {
-                              if (e.key === 'Enter') {
-                                submitComment(post.id);
-                              }
-                            }}
-                          />
-                          <button
-                            onClick={() => submitComment(post.id)}
-                            className="px-4 py-2 bg-white text-black rounded-xl font-medium hover:bg-zinc-200 transition-colors"
-                          >
-                            Post
-                          </button>
-                        </div>
+                  {/* Comments List */}
+                  <div className="space-y-4 pl-12">
+                    {loadingComments.has(post.id) ? (
+                      <div className="flex justify-center">
+                        <InlineLoader />
                       </div>
-
-                      {/* Comments List */}
-                      <div className="space-y-4">
-                        {loadingComments.has(post.id) ? (
-                          <InlineLoader />
-                        ) : comments[post.id]?.length > 0 ? (
-                          comments[post.id].map((comment) => (
-                            <div key={comment.id} className="flex gap-3">
-                              <div className="relative w-8 h-8 rounded-full overflow-hidden">
-                                <Image
-                                  src={comment.user.avatarUrl || "/default-avatar.png"}
-                                  alt="Profile"
-                                  width={32}
-                                  height={32}
-                                  className="object-cover"
-                                />
+                    ) : comments[post.id]?.length > 0 ? (
+                      comments[post.id].map((comment) => (
+                        <div key={comment.id} className="flex gap-3">
+                          <div className="relative w-8 h-8 rounded-full overflow-hidden ring-2 ring-white/10">
+                            <Image
+                              src={comment.user.avatarUrl || "/default-avatar.png"}
+                              alt="Profile"
+                              width={32}
+                              height={32}
+                              className="object-cover"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <div className="bg-white/5 rounded-lg p-3">
+                              <div className="font-medium text-white">
+                                {comment.user.name}
                               </div>
-                              <div className="flex-1 bg-zinc-800/30 rounded-xl p-3">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-medium text-white">{comment.user.name}</span>
-                                  <span className="text-xs text-zinc-500">
-                                    {new Date(comment.createdAt).toLocaleString('en-US', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: 'numeric',
-                                      minute: 'numeric'
-                                    })}
-                                  </span>
-                                </div>
-                                <p className="text-zinc-300">{comment.content}</p>
-                              </div>
+                              <p className="text-zinc-300">{comment.content}</p>
                             </div>
-                          ))
-                        ) : (
-                          <div className="text-center text-zinc-500">No comments yet. Be the first to comment!</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                            <p className="text-xs text-zinc-500 mt-1">
+                              {new Date(comment.createdAt).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: 'numeric',
+                                minute: 'numeric'
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-center text-zinc-500">No comments yet</p>
+                    )}
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
-          </div>
+          ))}
         </div>
-      </div>
+      </main>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-4 right-4 bg-zinc-800 text-white px-6 py-3 rounded-lg shadow-lg">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

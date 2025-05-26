@@ -24,7 +24,6 @@ export async function POST(req: NextRequest) {
         author: true,
         _count: {
           select: {
-            like: true,
             comments: true,
             reposts: true
           }

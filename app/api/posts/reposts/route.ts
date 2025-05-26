@@ -22,7 +22,6 @@ export async function GET(req: NextRequest) {
         author: true,
         _count: {
           select: {
-            like: true,
             comments: true,
             reposts: true
           }
@@ -31,19 +30,7 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     })
 
-    // Also fetch the user's liked posts to maintain the liked state
-    const likedPostIds = await prisma.like.findMany({
-      where: { userId },
-      select: { postId: true }
-    });
-
-    // Add liked status to the response
-    const postsWithLikedStatus = repostedPosts.map(post => ({
-      ...post,
-      isLiked: likedPostIds.some(like => like.postId === post.id)
-    }));
-
-    return NextResponse.json(postsWithLikedStatus)
+    return NextResponse.json(repostedPosts)
   } catch (err) {
     console.error("Error fetching reposts:", err)
     return NextResponse.json({ error: "Failed to fetch reposts" }, { status: 500 })
