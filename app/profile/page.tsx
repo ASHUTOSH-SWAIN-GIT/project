@@ -42,7 +42,7 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<TabType>('posts');
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const [commentedPosts, setCommentedPosts] = useState<Set<string>>(new Set());
-  const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
+  const [repostedPosts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchUserInfo = async () => {
