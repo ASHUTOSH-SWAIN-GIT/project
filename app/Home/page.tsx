@@ -155,7 +155,7 @@ export default function HomePage() {
       const response = await fetch(`/api/posts/reposts?userId=${user.id}`);
       if (response.ok) {
         const repostedPosts = await response.json();
-        setRepostedPosts(new Set(repostedPosts.map((post: any) => post.id)));
+        setRepostedPosts(new Set(repostedPosts.map((post: Post) => post.id)));
       }
     } catch (error) {
       console.error('Error fetching reposted posts:', error);
