@@ -155,7 +155,7 @@ export default function HomePage() {
       const response = await fetch(`/api/posts/reposts?userId=${user.id}`);
       if (response.ok) {
         const repostedPosts = await response.json();
-        setRepostedPosts(new Set(repostedPosts.map((post: any) => post.id)));
+        setRepostedPosts(new Set(repostedPosts.map((post: Post) => post.id)));
       }
     } catch (error) {
       console.error('Error fetching reposted posts:', error);
@@ -180,52 +180,51 @@ export default function HomePage() {
     }
   };
 
-  const fetchUserInfo = async () => {
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session) {
-        console.error('No session found');
-        router.push('/');
-        return;
-      }
-
-      const response = await fetch('/api/current-user', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      });
-      
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-        fetchPosts();
-        fetchUserLikedPosts();
-        fetchUserRepostedPosts();
-        fetchUserCommentedPosts();
-      } else {
-        if (response.status === 401) {
-          await supabase.auth.signOut();
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !session) {
+          console.error('No session found');
           router.push('/');
           return;
         }
-        console.error('Failed to fetch user data');
-      }
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-      router.push('/');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => {
+        const response = await fetch('/api/current-user', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+        
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+          fetchPosts();
+          fetchUserLikedPosts();
+          fetchUserRepostedPosts();
+          fetchUserCommentedPosts();
+        } else {
+          if (response.status === 401) {
+            await supabase.auth.signOut();
+            router.push('/');
+            return;
+          }
+          console.error('Failed to fetch user data');
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        router.push('/');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchUserInfo();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
         fetchUserInfo();
-        fetchUserRepostedPosts();
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setLikedPosts(new Set());
@@ -237,7 +236,7 @@ export default function HomePage() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [router, fetchUserInfo, fetchUserRepostedPosts]);
+  }, [router]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const file = event.target.files?.[0];
@@ -864,21 +863,3 @@ export default function HomePage() {
     </div>
   );
 }
-
-// Add this CSS to your global styles or component
-const styles = `
-  @keyframes slide-in {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-
-  .animate-slide-in {
-    animation: slide-in 0.3s ease-out;
-  }
-`;
