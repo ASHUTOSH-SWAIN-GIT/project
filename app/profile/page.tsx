@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaCalendarAlt, FaEnvelope, FaSignOutAlt, FaArrowLeft } from 'react-icons/fa';
+import {  FaRegComment, FaRetweet, FaCalendarAlt, FaEnvelope, FaSignOutAlt, FaArrowLeft } from 'react-icons/fa';
 import { useLoading } from '@/lib/contexts/LoadingContext';
 
 interface Post {
@@ -40,7 +40,6 @@ export default function ProfilePage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('posts');
-  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const [commentedPosts, setCommentedPosts] = useState<Set<string>>(new Set());
   const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
 
