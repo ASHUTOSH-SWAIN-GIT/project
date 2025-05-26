@@ -31,7 +31,7 @@ interface User {
   createdAt: string;
 }
 
-type TabType = 'posts' | 'reposts' | 'likes';
+type TabType = 'posts' | 'reposts';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -55,9 +55,6 @@ export default function ProfilePage() {
         case 'posts':
           endpoint = `/api/posts?userId=${userId}`;
           break;
-        case 'likes':
-          endpoint = `/api/posts/likes?userId=${userId}`;
-          break;
         case 'reposts':
           endpoint = `/api/posts/reposts?userId=${userId}`;
           break;
@@ -68,10 +65,7 @@ export default function ProfilePage() {
         const data = await response.json();
         setPosts(data);
         
-        // Update states based on tab
-        if (tab === 'likes') {
-          setLikedPosts(new Set(data.map((post: Post) => post.id)));
-        } else if (tab === 'reposts') {
+        if (tab === 'reposts') {
           setRepostedPosts(new Set(data.map((post: Post) => post.id)));
         }
       }
@@ -257,19 +251,6 @@ export default function ProfilePage() {
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500"></div>
             )}
           </button>
-          <button
-            className={`px-8 py-4 text-sm font-medium relative ${
-              activeTab === 'likes'
-                ? 'text-white'
-                : 'text-zinc-400 hover:text-white hover:bg-white/5'
-            }`}
-            onClick={() => handleTabChange('likes')}
-          >
-            Likes
-            {activeTab === 'likes' && (
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500"></div>
-            )}
-          </button>
         </div>
       </div>
 
@@ -280,11 +261,10 @@ export default function ProfilePage() {
             <div className="text-center py-16">
               <div className="w-20 h-20 mx-auto mb-4 text-zinc-600">
                 {activeTab === 'posts' && <FaRegComment className="w-full h-full" />}
-                {activeTab === 'likes' && <FaRegHeart className="w-full h-full" />}
                 {activeTab === 'reposts' && <FaRetweet className="w-full h-full" />}
               </div>
               <h3 className="text-xl font-semibold text-white mb-2">No {activeTab} yet</h3>
-              <p className="text-zinc-400">When you {activeTab === 'posts' ? 'post something' : activeTab === 'likes' ? 'like a post' : 'repost something'}, it will show up here.</p>
+              <p className="text-zinc-400">When you {activeTab === 'posts' ? 'post something' : 'repost something'}, it will show up here.</p>
             </div>
           ) : (
             posts.map((post) => (
@@ -318,28 +298,6 @@ export default function ProfilePage() {
                 {/* Post Actions */}
                 <div className="flex items-center justify-between pt-4 border-t border-zinc-800">
                   <div className="flex items-center gap-6">
-                    {/* Like indicator */}
-                    <div className="flex items-center gap-2 text-zinc-400">
-                      {likedPosts.has(post.id) ? (
-                        <FaHeart className="w-5 h-5 text-red-500" />
-                      ) : (
-                        <FaRegHeart className="w-5 h-5" />
-                      )}
-                      <span className={likedPosts.has(post.id) ? 'text-red-500' : ''}>
-                        {post._count?.like || 0}
-                      </span>
-                    </div>
-
-                    {/* Comment indicator */}
-                    <div className="flex items-center gap-2 text-zinc-400">
-                      <FaRegComment className={`w-5 h-5 ${
-                        commentedPosts.has(post.id) ? 'text-blue-500' : ''
-                      }`} />
-                      <span className={commentedPosts.has(post.id) ? 'text-blue-500' : ''}>
-                        {post._count?.comments || 0}
-                      </span>
-                    </div>
-
                     {/* Repost indicator */}
                     <div className="flex items-center gap-2 text-zinc-400">
                       <FaRetweet className={`w-5 h-5 ${
