@@ -13,13 +13,12 @@ model User {
   authId    String   @unique
   email     String   @unique
   name      String?
-  bio       String?
   avatarUrl String?
   createdAt DateTime @default(now())
 
   posts    Post[]
   comments Comment[]
-  like   Like[]
+  like     Like[]
   reposts  Repost[]
 }
 
@@ -33,7 +32,7 @@ model Post {
   mediaUrl  String?   
 
   comments Comment[]
-  like    Like[]
+  like     Like[]
   reposts  Repost[]
 
   @@index([authorId])
@@ -68,5 +67,5 @@ model Repost {
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
 
-  @@unique([postId, userId]) // 1 repost per user per post
+  @@unique([postId, userId]) 
 }

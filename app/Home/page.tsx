@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes, FaRegBookmark, FaShareAlt } from 'react-icons/fa';
+import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaImage, FaVideo, FaTimes, FaRegBookmark, FaShareAlt, FaInfoCircle, FaExclamationCircle } from 'react-icons/fa';
 import { uploadFile } from '@/lib/uploadFile';
 import { useLoading } from '@/lib/contexts/LoadingContext';
 import { Loader, InlineLoader } from '@/components/Loader';
@@ -47,6 +47,11 @@ interface ImageModalProps {
   onClose: () => void;
 }
 
+interface ToastProps {
+  message: string;
+  onClose: () => void;
+}
+
 const ImageModal = ({ imageUrl, onClose }: ImageModalProps) => {
   return (
     <div 
@@ -76,6 +81,23 @@ const ImageModal = ({ imageUrl, onClose }: ImageModalProps) => {
   );
 };
 
+const Toast = ({ message, onClose }: ToastProps) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose();
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className="fixed top-4 right-4 z-50 bg-black/90 text-white px-6 py-3 rounded-lg shadow-xl flex items-center gap-3 border border-white/10">
+      <FaExclamationCircle className="text-amber-500 w-5 h-5" />
+      <p>{message}</p>
+    </div>
+  );
+};
+
 const MAX_VIDEO_SIZE_MB = 100; // Maximum video size in MB
 const SUPPORTED_VIDEO_FORMATS = ['video/mp4', 'video/webm', 'video/quicktime'];
 const SUPPORTED_IMAGE_FORMATS = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -98,6 +120,7 @@ export default function HomePage() {
   const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
   const [commentedPosts, setCommentedPosts] = useState<Set<string>>(new Set());
   const { startLoading, stopLoading } = useLoading();
+  const [toast, setToast] = useState<string | null>(null);
 
   const fetchPosts = async () => {
     try {
@@ -132,7 +155,7 @@ export default function HomePage() {
       const response = await fetch(`/api/posts/reposts?userId=${user.id}`);
       if (response.ok) {
         const repostedPosts = await response.json();
-        setRepostedPosts(new Set(repostedPosts.map((post: Post) => post.id)));
+        setRepostedPosts(new Set(repostedPosts.map((post: any) => post.id)));
       }
     } catch (error) {
       console.error('Error fetching reposted posts:', error);
@@ -269,7 +292,7 @@ export default function HomePage() {
         const post = await response.json();
         const newPost = {
           ...post,
-          _count: post._count || { like: 0, comments: 0 }
+          _count: post._count || { like: 0, comments: 0, reposts: 0 }
         };
         setPosts([newPost, ...posts]);
         setNewPost('');
@@ -287,12 +310,16 @@ export default function HomePage() {
 
   const handleLike = async (postId: string) => {
     if (!user) return;
+    
+    if (likedPosts.has(postId)) {
+      setToast('You have already liked this post');
+      return;
+    }
 
     try {
       startLoading('Updating like');
-      const method = likedPosts.has(postId) ? 'DELETE' : 'POST';
       const response = await fetch('/api/likes', {
-        method,
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -305,11 +332,7 @@ export default function HomePage() {
       if (response.ok) {
         setLikedPosts(prev => {
           const newSet = new Set(prev);
-          if (method === 'POST') {
-            newSet.add(postId);
-          } else {
-            newSet.delete(postId);
-          }
+          newSet.add(postId);
           return newSet;
         });
 
@@ -320,7 +343,7 @@ export default function HomePage() {
                 ...post,
                 _count: {
                   ...post._count,
-                  like: method === 'POST' ? post._count.like + 1 : post._count.like - 1
+                  like: post._count.like + 1
                 }
               };
             }
@@ -373,7 +396,7 @@ export default function HomePage() {
   };
 
   const submitComment = async (postId: string) => {
-    if (!user || !newComments[postId]?.trim()) return;
+    if (!user || !newComments[postId]?.trim() || commentedPosts.has(postId)) return;
 
     try {
       startLoading('Posting comment');
@@ -391,7 +414,6 @@ export default function HomePage() {
 
       if (response.ok) {
         const { comment, post } = await response.json();
-        console.log('New comment added:', comment);
         
         // Update comments for this post
         setComments(prev => ({
@@ -406,7 +428,6 @@ export default function HomePage() {
         setCommentedPosts(prev => {
           const newSet = new Set(prev);
           newSet.add(postId);
-          console.log('Updated commented posts:', Array.from(newSet));
           return newSet;
         });
         
@@ -416,10 +437,6 @@ export default function HomePage() {
             p.id === postId ? { ...p, _count: post._count } : p
           )
         );
-      } else {
-        console.error('Failed to submit comment:', response.status);
-        const errorData = await response.json();
-        console.error('Error details:', errorData);
       }
     } catch (error) {
       console.error('Error submitting comment:', error);
@@ -430,12 +447,16 @@ export default function HomePage() {
 
   const handleRepost = async (postId: string) => {
     if (!user) return;
+    
+    if (repostedPosts.has(postId)) {
+      setToast('You have already reposted this post');
+      return;
+    }
 
     try {
       startLoading('Updating repost');
-      const method = repostedPosts.has(postId) ? 'DELETE' : 'POST';
       const response = await fetch('/api/repost', {
-        method,
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -446,30 +467,19 @@ export default function HomePage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const { post } = await response.json();
         
-        // Update reposted posts state
         setRepostedPosts(prev => {
           const newSet = new Set(prev);
-          if (method === 'POST') {
-            newSet.add(postId);
-          } else {
-            newSet.delete(postId);
-          }
+          newSet.add(postId);
           return newSet;
         });
 
-        // Update post in the posts list with the new data
-        if (data.post) {
-          setPosts(prevPosts => 
-            prevPosts.map(post => 
-              post.id === postId ? { ...post, _count: data.post._count } : post
-            )
-          );
-        }
-      } else {
-        const errorData = await response.json();
-        console.error('Repost error:', errorData.error);
+        setPosts(prevPosts => 
+          prevPosts.map(p => 
+            p.id === postId ? { ...p, _count: post._count } : p
+          )
+        );
       }
     } catch (error) {
       console.error('Error handling repost:', error);
@@ -489,14 +499,21 @@ export default function HomePage() {
     return (
       <button 
         onClick={() => handleComment(post.id)}
-        className="flex items-center gap-2 text-zinc-400 hover:text-blue-400 transition-all group"
+        disabled={commentedPosts.has(post.id)}
+        className={`flex items-center gap-2 transition-all group ${
+          commentedPosts.has(post.id) 
+            ? 'text-blue-400 cursor-not-allowed' 
+            : 'text-zinc-400 hover:text-blue-400'
+        }`}
       >
         <FaRegComment 
-          className={`w-5 h-5 group-hover:scale-110 transition-transform ${
-            hasCommented ? 'text-blue-400' : ''
+          className={`w-5 h-5 ${
+            commentedPosts.has(post.id) 
+              ? 'text-blue-400' 
+              : 'group-hover:scale-110 transition-transform'
           }`} 
         />
-        <span className={hasCommented ? 'text-blue-400' : ''}>
+        <span className={commentedPosts.has(post.id) ? 'text-blue-400' : ''}>
           {post._count?.comments || 0}
         </span>
       </button>
@@ -515,6 +532,13 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-black to-zinc-900">
+      {toast && (
+        <Toast 
+          message={toast} 
+          onClose={() => setToast(null)} 
+        />
+      )}
+      
       {selectedImage && <ImageModal imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />}
       
       <div className="max-w-6xl mx-auto py-8 px-4">
@@ -542,15 +566,29 @@ export default function HomePage() {
                   {user?.name || 'Anonymous'}
                 </h2>
                 <p className="text-zinc-400 text-sm mt-1">{user?.email}</p>
-                
-                <div className="w-full mt-6 pt-6 border-t border-white/5">
-                  <div className="flex justify-between items-center text-sm mb-3 group cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors">
-                    <span className="text-zinc-400 group-hover:text-white">Profile views</span>
-                    <span className="font-semibold text-white">{152}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm group cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors">
-                    <span className="text-zinc-400 group-hover:text-white">Post impressions</span>
-                    <span className="font-semibold text-white">{1284}</span>
+
+                {/* Active Status Indicator */}
+                <div className="mt-6 w-full">
+                  <div className="bg-zinc-800/50 backdrop-blur-sm rounded-xl p-4 border border-white/5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                          <div className="absolute inset-0 w-3 h-3 bg-emerald-500 rounded-full animate-ping opacity-75"></div>
+                        </div>
+                        <span className="text-emerald-500 font-medium">Active</span>
+                      </div>
+                      <div className="bg-zinc-700/50 px-2 py-1 rounded-md">
+                        <span className="text-xs text-zinc-400">Now</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 text-xs text-zinc-500">
+                      Last active: {new Date().toLocaleString('en-US', { 
+                        hour: 'numeric', 
+                        minute: 'numeric',
+                        hour12: true 
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -710,7 +748,10 @@ export default function HomePage() {
                     <div className="flex items-center gap-6">
                       <button 
                         onClick={() => handleLike(post.id)}
-                        className="flex items-center gap-2 text-zinc-400 hover:text-red-400 transition-all group"
+                        disabled={likedPosts.has(post.id)}
+                        className={`flex items-center gap-2 transition-all group ${
+                          likedPosts.has(post.id) ? 'text-red-400 cursor-not-allowed' : 'text-zinc-400 hover:text-red-400'
+                        }`}
                       >
                         {likedPosts.has(post.id) ? (
                           <FaHeart className="w-5 h-5 text-red-400" />
@@ -722,15 +763,35 @@ export default function HomePage() {
                         </span>
                       </button>
 
-                      {renderCommentButton(post)}
+                      <button 
+                        onClick={() => handleComment(post.id)}
+                        disabled={commentedPosts.has(post.id)}
+                        className={`flex items-center gap-2 transition-all group ${
+                          commentedPosts.has(post.id) ? 'text-blue-400 cursor-not-allowed' : 'text-zinc-400 hover:text-blue-400'
+                        }`}
+                      >
+                        <FaRegComment 
+                          className={`w-5 h-5 ${
+                            commentedPosts.has(post.id) ? 'text-blue-400' : 'group-hover:scale-110 transition-transform'
+                          }`} 
+                        />
+                        <span className={commentedPosts.has(post.id) ? 'text-blue-400' : ''}>
+                          {post._count?.comments || 0}
+                        </span>
+                      </button>
 
                       <button 
                         onClick={() => handleRepost(post.id)}
-                        className="flex items-center gap-2 text-zinc-400 hover:text-green-400 transition-all group"
+                        disabled={repostedPosts.has(post.id)}
+                        className={`flex items-center gap-2 transition-all group ${
+                          repostedPosts.has(post.id) ? 'text-green-400 cursor-not-allowed' : 'text-zinc-400 hover:text-green-400'
+                        }`}
                       >
-                        <FaRetweet className={`w-5 h-5 group-hover:scale-110 transition-transform ${
-                          repostedPosts.has(post.id) ? 'text-green-400' : ''
-                        }`} />
+                        <FaRetweet 
+                          className={`w-5 h-5 ${
+                            repostedPosts.has(post.id) ? 'text-green-400' : 'group-hover:scale-110 transition-transform'
+                          }`}
+                        />
                         <span className={repostedPosts.has(post.id) ? 'text-green-400' : ''}>
                           {post._count?.reposts || 0}
                         </span>
@@ -830,3 +891,21 @@ export default function HomePage() {
     </div>
   );
 }
+
+// Add this CSS to your global styles or component
+const styles = `
+  @keyframes slide-in {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  .animate-slide-in {
+    animation: slide-in 0.3s ease-out;
+  }
+`;

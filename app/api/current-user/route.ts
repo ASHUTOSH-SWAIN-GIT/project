@@ -21,7 +21,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
     }
 
-    
     const dbUser = await prisma.user.findUnique({
       where: { authId: user.id },
       select: {
@@ -29,7 +28,7 @@ export async function GET(req: NextRequest) {
         email: true,
         name: true,
         avatarUrl: true,
-        
+        createdAt: true,
       },
     });
 

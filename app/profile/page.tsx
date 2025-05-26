@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaCalendarAlt, FaEnvelope, FaMapMarkerAlt, FaLink, FaPencilAlt, FaSignOutAlt, FaArrowLeft } from 'react-icons/fa';
+import { FaRegHeart, FaHeart, FaRegComment, FaRetweet, FaCalendarAlt, FaEnvelope, FaSignOutAlt, FaArrowLeft } from 'react-icons/fa';
 import { useLoading } from '@/lib/contexts/LoadingContext';
 
 interface Post {
@@ -230,13 +230,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Profile Actions */}
-        <div className="flex justify-end py-4 gap-3">
-          <button 
-            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors flex items-center gap-2"
-          >
-            <FaPencilAlt className="w-4 h-4" />
-            <span>Edit Profile</span>
-          </button>
+        <div className="flex justify-end py-4">
           <button 
             onClick={handleLogout}
             className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-full transition-colors flex items-center gap-2"
@@ -253,10 +247,6 @@ export default function ProfilePage() {
             <p className="text-zinc-400">@{user?.name?.toLowerCase().replace(/\s+/g, '')}</p>
           </div>
 
-          <p className="text-white text-lg">
-            {user?.bio || "No bio yet"}
-          </p>
-
           <div className="flex flex-wrap gap-4 text-zinc-400">
             <div className="flex items-center gap-2">
               <FaEnvelope className="w-4 h-4" />
@@ -265,17 +255,6 @@ export default function ProfilePage() {
             <div className="flex items-center gap-2">
               <FaCalendarAlt className="w-4 h-4" />
               <span>Joined {new Date(user?.createdAt || '').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
-            </div>
-          </div>
-
-          <div className="flex gap-6">
-            <div className="flex gap-2">
-              <span className="text-white font-bold">2,345</span>
-              <span className="text-zinc-400">Following</span>
-            </div>
-            <div className="flex gap-2">
-              <span className="text-white font-bold">1.2M</span>
-              <span className="text-zinc-400">Followers</span>
             </div>
           </div>
         </div>
@@ -368,37 +347,39 @@ export default function ProfilePage() {
                 
                 {/* Post Actions */}
                 <div className="flex items-center justify-between pt-4 border-t border-zinc-800">
-                  <button 
-                    onClick={() => handleLike(post.id)}
-                    className="flex items-center gap-2 text-zinc-400 hover:text-red-500 transition-colors group"
-                  >
-                    {likedPosts.has(post.id) ? (
-                      <FaHeart className="w-5 h-5 text-red-500" />
-                    ) : (
-                      <FaRegHeart className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                    )}
-                    <span className={likedPosts.has(post.id) ? 'text-red-500' : ''}>
-                      {post._count?.like || 0}
-                    </span>
-                  </button>
+                  <div className="flex items-center gap-6">
+                    {/* Like indicator */}
+                    <div className="flex items-center gap-2 text-zinc-400">
+                      {likedPosts.has(post.id) ? (
+                        <FaHeart className="w-5 h-5 text-red-500" />
+                      ) : (
+                        <FaRegHeart className="w-5 h-5" />
+                      )}
+                      <span className={likedPosts.has(post.id) ? 'text-red-500' : ''}>
+                        {post._count?.like || 0}
+                      </span>
+                    </div>
 
-                  <button 
-                    className="flex items-center gap-2 text-zinc-400 hover:text-blue-500 transition-colors group"
-                  >
-                    <FaRegComment className={`w-5 h-5 group-hover:scale-110 transition-transform ${
-                      commentedPosts.has(post.id) ? 'text-blue-500' : ''
-                    }`} />
-                    <span className={commentedPosts.has(post.id) ? 'text-blue-500' : ''}>
-                      {post._count?.comments || 0}
-                    </span>
-                  </button>
+                    {/* Comment indicator */}
+                    <div className="flex items-center gap-2 text-zinc-400">
+                      <FaRegComment className={`w-5 h-5 ${
+                        commentedPosts.has(post.id) ? 'text-blue-500' : ''
+                      }`} />
+                      <span className={commentedPosts.has(post.id) ? 'text-blue-500' : ''}>
+                        {post._count?.comments || 0}
+                      </span>
+                    </div>
 
-                  <button 
-                    className="flex items-center gap-2 text-zinc-400 hover:text-green-500 transition-colors group"
-                  >
-                    <FaRetweet className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                    <span>0</span>
-                  </button>
+                    {/* Repost indicator */}
+                    <div className="flex items-center gap-2 text-zinc-400">
+                      <FaRetweet className={`w-5 h-5 ${
+                        repostedPosts.has(post.id) ? 'text-green-500' : ''
+                      }`} />
+                      <span className={repostedPosts.has(post.id) ? 'text-green-500' : ''}>
+                        {post._count?.reposts || 0}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))

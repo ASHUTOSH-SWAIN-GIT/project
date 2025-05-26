@@ -45,15 +45,15 @@ export async function POST(req: NextRequest) {
 
 
 export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url)
-    const postId = searchParams.get("postId")
+    try {
+      const { searchParams } = new URL(req.url)
+      const postId = searchParams.get("postId")
     const userId = searchParams.get("userId")
-
+  
     if (!postId && !userId) {
       return NextResponse.json({ error: "Missing postId or userId" }, { status: 400 })
-    }
-
+      }
+  
     if (userId) {
       // Get all posts that the user has commented on
       const posts = await prisma.post.findMany({
@@ -79,16 +79,16 @@ export async function GET(req: NextRequest) {
     }
 
     // Get comments for a specific post
-    const comments = await prisma.comment.findMany({
+      const comments = await prisma.comment.findMany({
       where: { postId: postId! },
       include: { user: true },
       orderBy: { createdAt: "asc" }
     });
-
-    return NextResponse.json(comments)
-  } catch (err) {
-    console.error("Fetch comments error:", err)
-    return NextResponse.json({ error: "Failed to fetch comments" }, { status: 500 })
+  
+      return NextResponse.json(comments)
+    } catch (err) {
+      console.error("Fetch comments error:", err)
+      return NextResponse.json({ error: "Failed to fetch comments" }, { status: 500 })
+    }
   }
-}
   
