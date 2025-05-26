@@ -166,60 +166,58 @@ export default function HomePage() {
     if (!user) return;
     
     try {
-      console.log('Fetching commented posts for user:', user.id);
       const response = await fetch(`/api/comments?userId=${user.id}`);
       if (response.ok) {
         const commentedPosts = await response.json();
-        console.log('Received commented posts:', commentedPosts);
         setCommentedPosts(new Set(commentedPosts.map((post: Post) => post.id)));
-      } else {
-        console.error('Failed to fetch commented posts:', response.status);
       }
     } catch (error) {
       console.error('Error fetching commented posts:', error);
     }
   };
 
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError || !session) {
-          console.error('No session found');
+  const fetchUserInfo = async () => {
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('No session found');
+        router.push('/');
+        return;
+      }
+
+      const response = await fetch('/api/current-user', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+        await Promise.all([
+          fetchPosts(),
+          fetchUserLikedPosts(),
+          fetchUserRepostedPosts(),
+          fetchUserCommentedPosts()
+        ]);
+      } else {
+        if (response.status === 401) {
+          await supabase.auth.signOut();
           router.push('/');
           return;
         }
-
-        const response = await fetch('/api/current-user', {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        });
-        
-        if (response.ok) {
-          const userData = await response.json();
-          setUser(userData);
-          fetchPosts();
-          fetchUserLikedPosts();
-          fetchUserRepostedPosts();
-          fetchUserCommentedPosts();
-        } else {
-          if (response.status === 401) {
-            await supabase.auth.signOut();
-            router.push('/');
-            return;
-          }
-          console.error('Failed to fetch user data');
-        }
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-        router.push('/');
-      } finally {
-        setLoading(false);
+        console.error('Failed to fetch user data');
       }
-    };
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      router.push('/');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchUserInfo();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {

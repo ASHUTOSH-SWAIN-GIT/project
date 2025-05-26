@@ -44,43 +44,8 @@ export default function ProfilePage() {
   const [commentedPosts, setCommentedPosts] = useState<Set<string>>(new Set());
   const [repostedPosts, setRepostedPosts] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError || !session) {
-          console.error('No session found');
-          setLoading(false);
-          return;
-        }
-
-        const response = await fetch('/api/current-user', {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        });
-        
-        if (response.ok) {
-          const userData = await response.json();
-          setUser(userData);
-          fetchUserContent(activeTab);
-          fetchUserCommentedPosts();
-        } else {
-          console.error('Failed to fetch user data');
-        }
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserInfo();
-  }, [activeTab]);
-
-  const fetchUserContent = async (tab: TabType) => {
-    if (!user) return;
+  const fetchUserContent = async (tab: TabType, userId: string) => {
+    if (!userId) return;
 
     try {
       startLoading(`Loading ${tab}`);
@@ -88,13 +53,13 @@ export default function ProfilePage() {
       
       switch (tab) {
         case 'posts':
-          endpoint = `/api/posts?userId=${user.id}`;
+          endpoint = `/api/posts?userId=${userId}`;
           break;
         case 'likes':
-          endpoint = `/api/posts/likes?userId=${user.id}`;
+          endpoint = `/api/posts/likes?userId=${userId}`;
           break;
         case 'reposts':
-          endpoint = `/api/posts/reposts?userId=${user.id}`;
+          endpoint = `/api/posts/reposts?userId=${userId}`;
           break;
       }
 
@@ -117,11 +82,11 @@ export default function ProfilePage() {
     }
   };
 
-  const fetchUserCommentedPosts = async () => {
-    if (!user) return;
+  const fetchUserCommentedPosts = async (userId: string) => {
+    if (!userId) return;
     
     try {
-      const response = await fetch(`/api/posts/comments?userId=${user.id}`);
+      const response = await fetch(`/api/posts/comments?userId=${userId}`);
       if (response.ok) {
         const commentedPosts = await response.json();
         setCommentedPosts(new Set(commentedPosts.map((post: Post) => post.id)));
@@ -131,11 +96,46 @@ export default function ProfilePage() {
     }
   };
 
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !session) {
+          console.error('No session found');
+          setLoading(false);
+          return;
+        }
+
+        const response = await fetch('/api/current-user', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+        
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+          await Promise.all([
+            fetchUserContent(activeTab, userData.id),
+            fetchUserCommentedPosts(userData.id)
+          ]);
+        } else {
+          console.error('Failed to fetch user data');
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserInfo();
+  }, [activeTab]);
+
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
-    fetchUserContent(tab);
   };
-
 
   const handleLogout = async () => {
     try {
