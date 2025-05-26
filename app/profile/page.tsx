@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import {  FaRegComment, FaRetweet, FaCalendarAlt, FaEnvelope, FaSignOutAlt, FaArrowLeft } from 'react-icons/fa';
+import { FaRegComment, FaRetweet, FaCalendarAlt, FaEnvelope, FaSignOutAlt, FaArrowLeft } from 'react-icons/fa';
 import { useLoading } from '@/lib/contexts/LoadingContext';
 
 interface Post {
@@ -16,7 +16,6 @@ interface Post {
     avatarUrl: string;
   };
   _count?: {
-    like: number;
     comments: number;
     reposts: number;
   };
