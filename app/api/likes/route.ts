@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,9 +33,9 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ like, post: updatedPost }, { status: 201 })
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Handle unique constraint error (user already liked this post)
-    if (err.code === "P2002") {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       return NextResponse.json({ error: "Post already liked by this user" }, { status: 409 })
     }
 

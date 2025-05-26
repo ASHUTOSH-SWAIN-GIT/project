@@ -103,9 +103,11 @@ export default function ProfilePage() {
         const data = await response.json();
         setPosts(data);
         
-        // Update liked posts state if we're on the likes tab
+        // Update states based on tab
         if (tab === 'likes') {
           setLikedPosts(new Set(data.map((post: Post) => post.id)));
+        } else if (tab === 'reposts') {
+          setRepostedPosts(new Set(data.map((post: Post) => post.id)));
         }
       }
     } catch (error) {

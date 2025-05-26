@@ -237,7 +237,7 @@ export default function HomePage() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, fetchUserInfo, fetchUserRepostedPosts]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const file = event.target.files?.[0];
